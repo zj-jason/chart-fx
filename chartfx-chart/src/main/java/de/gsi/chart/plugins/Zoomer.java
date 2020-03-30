@@ -85,6 +85,7 @@ public class Zoomer extends ChartPlugin {
      * Default pan mouse filter passing on left mouse button with {@link MouseEvent#isControlDown() control key down}.
      */
     public static final Predicate<MouseEvent> DEFAULT_MOUSE_FILTER = MouseEventsHelper::isOnlyMiddleButtonDown;
+    private static final double SCROLL_STEP = 0.9; // The amount to zoom for every scroll event
     private double panShiftX;
     private double panShiftY;
     private Point2D previousMouseLocation;
@@ -589,7 +590,7 @@ public class Zoomer extends ChartPlugin {
     }
 
     /**
-     * Sets the value of the {@link #animatedProperty()}.
+     * Sets the value of the {@link #updateTickUnitProperty()}.
      *
      * @param value if {@code true} zoom will be animated
      * @see #setZoomDuration(Duration)
@@ -852,7 +853,7 @@ public class Zoomer extends ChartPlugin {
         zoomRectangle.setHeight(maxY - minY);
 
         pushCurrentZoomWindows();
-        performZoom(getZoomDataWindows(), true);
+//        performZoom(getZoomDataWindows(), true);
         zoomRectangle.setVisible(false);
     }
 
@@ -1174,7 +1175,7 @@ public class Zoomer extends ChartPlugin {
         final double posOnAxis = axis.getValueForDisplay(mousePos);
         final double max = axis.getMax();
         final double min = axis.getMin();
-        final double scaling = isZoomIn ? 0.9 : 1 / 0.9;
+        final double scaling = isZoomIn ? SCROLL_STEP : 1 / SCROLL_STEP;
         final double diffHalf1 = scaling * Math.abs(posOnAxis - min);
         final double diffHalf2 = scaling * Math.abs(max - posOnAxis);
 
