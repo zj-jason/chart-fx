@@ -12,6 +12,8 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,20 +27,18 @@ import de.gsi.chart.XYChart;
 import de.gsi.chart.axes.AxisMode;
 import de.gsi.chart.axes.spi.DefaultNumericAxis;
 import de.gsi.chart.ui.utils.JavaFXInterceptorUtils.SelectiveJavaFxInterceptor;
+import de.gsi.chart.ui.geometry.Side;
 import de.gsi.chart.ui.utils.TestFx;
 
 /*
  * Tests for the Zoomer Plugin
  * 
  * TODO: Additional things to test
- * - scroll zoom
- * - intelligent zoom
  * - range slider
- * - all properties
  * - more than 2 axes, zoom inhibition property
  * - Error Handling
  * - infinite zoom to numerical limit
- * - zoom/pan to negative log axis
+ * - zoom/pan to negative log axis?
  *
  * @author akrimm
  */
@@ -48,6 +48,8 @@ public class ZoomerTests {
     private static final double TOLERANCE = 1.0;
     private DefaultNumericAxis xAxis;
     private DefaultNumericAxis yAxis;
+    private DefaultNumericAxis ommittedXAxis;
+    private DefaultNumericAxis ommittedYAxis;
     private XYChart chart;
     private Zoomer zoomer;
     private Scene scene;
@@ -64,8 +66,20 @@ public class ZoomerTests {
         xAxis.setAnimated(false);
         yAxis = new DefaultNumericAxis("x", -100, +100, 10);
         yAxis.setAnimated(false);
+        ommittedXAxis = new DefaultNumericAxis("x - nozoom", -42, +42, 5);
+        ommittedXAxis.setAnimated(false);
+        ommittedXAxis.setSide(Side.TOP);
+        ommittedYAxis = new DefaultNumericAxis("y - nozoom", -23, +23, 5);
+        ommittedYAxis.setAnimated(false);
+        ommittedYAxis.setSide(Side.RIGHT);
+        // TODO: inverting the y axis should not break the test
+        // yAxis.invertAxis(true);
+        // yAxis.set(-100, 100);
         chart = new XYChart(xAxis, yAxis);
+        chart.getAxes().addAll(ommittedXAxis, ommittedYAxis);
         zoomer = new Zoomer();
+        Zoomer.setOmitZoom(ommittedYAxis, true);
+        zoomer.omitAxisZoomList().add(ommittedXAxis);
         zoomer.setAnimated(false);
         chart.getPlugins().add(zoomer);
         scene = new Scene(new Pane(chart), 200, 200);
@@ -117,10 +131,12 @@ public class ZoomerTests {
      */
     @Test
     public void testBoxZoomAuto(FxRobot fxRobot) {
-        zoomer.setAnimated(true);
-        zoomer.setZoomDuration(Duration.millis(70));
-        zoomer.setAutoZoomEnabled(true);
-        zoomer.setAutoZoomThreshold(10); ///TODO: seems to be ignored
+        fxRobot.interact(() -> {
+            zoomer.setAnimated(true);
+            zoomer.setZoomDuration(Duration.millis(70));
+            zoomer.setAutoZoomEnabled(true);
+            zoomer.setAutoZoomThreshold(10); ///TODO: seems to be ignored
+        });
         // assert initial axis configuration
         assertAxesZoom(-100, -100, 100, 100, fxRobot);
         // perform box zoom
@@ -130,19 +146,17 @@ public class ZoomerTests {
         // assert new axis ranges
         assertAxesZoom(-50, -30, 50, 20, fxRobot, TOLERANCE);
         // perform box zoom X
-        fxRobot.interact(() -> zoomer.setAxisMode(AxisMode.X));
-        fxRobot.drag(getPointFromChartCoordinates(-45, -20, fxRobot), MouseButton.PRIMARY)
+        fxRobot.drag(getPointFromChartCoordinates(-45, -20, fxRobot).add(0,-9), MouseButton.PRIMARY)
                 .dropTo(getPointFromChartCoordinates(42, -20, fxRobot));
         fxRobot.sleep(100);
         // assert new axis ranges
         assertAxesZoom(-45, -30, 42, 20, fxRobot, TOLERANCE);
         // perform box zoom Y
-        fxRobot.interact(() -> zoomer.setAxisMode(AxisMode.Y));
-        fxRobot.drag(getPointFromChartCoordinates(30, -5, fxRobot), MouseButton.PRIMARY)
-                .dropTo(getPointFromChartCoordinates(-40, -6, fxRobot));
+        fxRobot.drag(getPointFromChartCoordinates(3, 15, fxRobot).add(9, 0) , MouseButton.PRIMARY)
+                .dropTo(getPointFromChartCoordinates(3, -22, fxRobot));
         fxRobot.sleep(100);
         // assert new axis ranges
-        assertAxesZoom(-40, -30, 30, 20, fxRobot, TOLERANCE);
+        assertAxesZoom(-45, -22, 42, 15, fxRobot, TOLERANCE);
         // reset zoom (right click)
         fxRobot.clickOn(chart, MouseButton.SECONDARY);
         fxRobot.sleep(100);
@@ -154,26 +168,6 @@ public class ZoomerTests {
         // one more time to reach fast return
         fxRobot.press(KeyCode.CONTROL).clickOn(chart, MouseButton.SECONDARY).release(KeyCode.CONTROL);
         fxRobot.sleep(100);
-        assertAxesZoom(-100, -100, 100, 100, fxRobot);
-    }
-
-    /**
-     * Zoom constrained to y direction
-     * 
-     * @param fxRobot
-     */
-    @Test
-    public void testBoxZoomY(FxRobot fxRobot) {
-        fxRobot.interact(() -> zoomer.setAxisMode(AxisMode.Y));
-        // assert initial axis configuration
-        assertAxesZoom(-100, -100, 100, 100, fxRobot);
-        // perform box zoom
-        fxRobot.drag(getPointFromChartCoordinates(-50, 20, fxRobot), MouseButton.PRIMARY)
-                .dropTo(getPointFromChartCoordinates(50, -30, fxRobot));
-        // assert new axis ranges
-        assertAxesZoom(-100, -30, 100, 20, fxRobot, TOLERANCE);
-        // reset zoom (right click)
-        fxRobot.clickOn(chart, MouseButton.SECONDARY);
         assertAxesZoom(-100, -100, 100, 100, fxRobot);
     }
 
@@ -275,56 +269,59 @@ public class ZoomerTests {
         assertEquals(false, zoomer.isAutoZoomEnabled());
         zoomer.setAutoZoomEnabled(true);
         assertEquals(true, zoomer.isAutoZoomEnabled());
-        // 
+        // AutoZoomThreshold
         zoomer.setAutoZoomThreshold(42);
         assertEquals(42, zoomer.getAutoZoomThreshold());
-        // 
+        // AxisMode
         zoomer.setAxisMode(AxisMode.X);
         assertEquals(AxisMode.X, zoomer.getAxisMode());
-        // 
+        // Chart
         zoomer.setChart(null);
         assertEquals(null, zoomer.getChart());
         zoomer.setChart(chart);
         assertEquals(chart, zoomer.getChart());
-        // 
+        // DragCursor
         zoomer.setDragCursor(Cursor.TEXT);
         assertEquals(Cursor.TEXT, zoomer.getDragCursor());
-        // 
+        // PannerEnabled
         zoomer.setPannerEnabled(false);
         assertEquals(false, zoomer.isPannerEnabled());
         zoomer.setPannerEnabled(true);
         assertEquals(true, zoomer.isPannerEnabled());
-        // 
+        // SliderVisible
         zoomer.setSliderVisible(false);
         assertEquals(false, zoomer.isSliderVisible());
         zoomer.setSliderVisible(true);
         assertEquals(true, zoomer.isSliderVisible());
-        // 
+        // UpdateTickUnit
         zoomer.setUpdateTickUnit(false);
         assertEquals(false, zoomer.isUpdateTickUnit());
         zoomer.setUpdateTickUnit(true);
         assertEquals(true, zoomer.isUpdateTickUnit());
-        // 
+        // ZoomCursor
         zoomer.setZoomCursor(Cursor.TEXT);
         assertEquals(Cursor.TEXT, zoomer.getZoomCursor());
-        // 
+        // ZoomDuration
         zoomer.setZoomDuration(Duration.ZERO);
         assertEquals(Duration.ZERO, zoomer.getZoomDuration());
-        // 
+        // ZoomInMouseFilter
         zoomer.setZoomInMouseFilter(null);
         assertEquals(null, zoomer.getZoomInMouseFilter());
-        // 
+        // ZoomOriginMouseFilter
         zoomer.setZoomOriginMouseFilter(null);
         assertEquals(null, zoomer.getZoomOriginMouseFilter());
-        // 
+        // ZoomOutMouseFilter
         zoomer.setZoomOutMouseFilter(null);
         assertEquals(null, zoomer.getZoomOutMouseFilter());
-        // 
+        // ZoomScrollFilter
         zoomer.setZoomScrollFilter(null);
         assertEquals(null, zoomer.getZoomScrollFilter());
-        // 
+        // static omit zoom method
         Zoomer.setOmitZoom(xAxis, true);
-        assertEquals(true, Zoomer.isOmitZoom(xAxis));
+        assertTrue(Zoomer.isOmitZoom(xAxis));
+        assertTrue(Zoomer.isOmitZoom(ommittedYAxis));
+        Zoomer.setOmitZoom(ommittedYAxis, false);
+        assertFalse(Zoomer.isOmitZoom(ommittedYAxis));
     }
 
     /**
@@ -359,6 +356,17 @@ public class ZoomerTests {
         FxAssert.verifyThat(yAxis, (DefaultNumericAxis ax) -> {
             assertEquals(yMin, ax.getMin(), tolerance);
             assertEquals(yMax, ax.getMax(), tolerance);
+            return true;
+        }, DebugUtils.informedErrorMessage(fxRobot));
+        // assert that ignored axes are untouched
+        FxAssert.verifyThat(ommittedXAxis, (DefaultNumericAxis ax) -> {
+            assertEquals(-42, ax.getMin());
+            assertEquals(42, ax.getMax());
+            return true;
+        }, DebugUtils.informedErrorMessage(fxRobot));
+        FxAssert.verifyThat(ommittedYAxis, (DefaultNumericAxis ax) -> {
+            assertEquals(-23, ax.getMin());
+            assertEquals(23, ax.getMax());
             return true;
         }, DebugUtils.informedErrorMessage(fxRobot));
     }
