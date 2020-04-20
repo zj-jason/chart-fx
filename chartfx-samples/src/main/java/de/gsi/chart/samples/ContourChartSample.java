@@ -95,7 +95,7 @@ public class ContourChartSample extends Application {
         zAxis.setAutoRangeRounding(false);
         zAxis.setName("z Amplitude");
         zAxis.setAutoRanging(true);
-        zAxis.setSide(Side.RIGHT);
+        //        zAxis.setSide(Side.RIGHT);
         zAxis.getProperties().put(Zoomer.ZOOMER_OMIT_AXIS, true);
 
         final XYChart chart = new XYChart(xAxis, yAxis);
