@@ -391,7 +391,10 @@ public class XYChart extends Chart {
             return retVal;
         }
         retVal.addAll(getDatasets());
-        getRenderers().forEach(renderer -> renderer.getAxes().stream().filter(axis::equals).forEach(rendererAxis -> retVal.addAll(renderer.getDatasets())));
+        getRenderers().forEach(renderer -> renderer.getAxes().stream().filter(a -> a.getSide().isHorizontal() == axis.getSide().isHorizontal()).findFirst().ifPresent(rendererAxis -> {
+            if (rendererAxis.equals(axis))
+                retVal.addAll(renderer.getDatasets());
+        }));
         return retVal;
     }
 
