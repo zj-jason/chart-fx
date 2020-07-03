@@ -22,6 +22,7 @@ public class EventQueueListener {
      private static final Logger LOGGER = LoggerFactory.getLogger(EventQueueListener.class);
      
      private EventListener listener;
+     private MultipleEventListener multiListener; 
      private long position; // last position in the eventLog which was processed
      private long lastEvent; // last matching event which was processed by the listener
      private EventQueueListenerStrategy strategy; // strategy how listeners should be invoked for events

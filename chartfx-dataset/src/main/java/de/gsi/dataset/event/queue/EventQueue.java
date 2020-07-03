@@ -2,7 +2,11 @@ package de.gsi.dataset.event.queue;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
 import org.slf4j.Logger;
@@ -11,9 +15,13 @@ import org.slf4j.LoggerFactory;
 import com.lmax.disruptor.EventTranslatorOneArg;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.SleepingWaitStrategy;
+import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
+import com.lmax.disruptor.util.DaemonThreadFactory;
 
 import de.gsi.dataset.event.EventListener;
+import de.gsi.dataset.event.EventSource;
+import de.gsi.dataset.event.EventThreadHelper;
 import de.gsi.dataset.event.UpdateEvent;
 
 /**
@@ -35,6 +43,11 @@ public class EventQueue {
     // maps caching the last event id of different kinds of updates to allow consumers to skip lots of irrelevant updates
     private final Map<Object, Long> sourceUpdateMap = Collections.synchronizedMap(new HashMap<>());
     private final Map<Class<? extends UpdateEvent>, Long> eventClassUpdateMap = Collections.synchronizedMap(new HashMap<>());
+    
+    // the thread pool running all the listener queues
+    // private ExecutorService executor = EventThreadHelper.getExecutorService();
+    ScheduledExecutorService executor = Executors.newScheduledThreadPool(EventThreadHelper.getMaxThreads());
+    private EventQueueListener[] listeners = new EventQueueListener[100];
 
     public static EventQueue getInstance(final int size) {
         if (instance == null || size != instance.queue.getBufferSize()) {
@@ -52,7 +65,21 @@ public class EventQueue {
      * @param size Number of events to be saved in the event queue
      */
     private EventQueue(final int size) {
-        queue = RingBuffer.create(ProducerType.MULTI, () -> new RingEvent(0, null), size, new SleepingWaitStrategy());
+        Disruptor<RingEvent> disruptor = new Disruptor<>(
+                RingEvent::new, // used to fill the buffer with blank events
+                size, // size of the ring buffer
+                DaemonThreadFactory.INSTANCE, // ThreadFactory
+                ProducerType.MULTI, // Allow multiple threads to insert new events
+                new SleepingWaitStrategy() // how the consumers will wait for new work
+                );
+        
+        queue = disruptor.getRingBuffer();
+        // debug Handler
+        disruptor.handleEventsWith((evt, evtId, endOfBatch) -> {
+            LOGGER.atError().addArgument(evtId).addArgument(endOfBatch).log("event: {} - {}");
+            System.err.println("event: " + evtId + (endOfBatch ? " -\n" : ""));
+        });
+        disruptor.start();
     }
 
     long submitEvent(final UpdateEvent event) {
@@ -143,9 +170,9 @@ public class EventQueue {
      * @param listener event listener which gets called with the update
      * @param updateRate how often to recheck for new events
      */
-    //    public void addListener(Predicate<RingEvent> filter, MultipleEventsListener listener, int updateRate) {
-    //
-    //    }
+    public void addListener(Predicate<RingEvent> filter, MultipleEventListener listener, int updateRate) {
+
+    }
 
     /**
      * @return the last event which was added to the queue
@@ -196,6 +223,13 @@ public class EventQueue {
         }
 
         /**
+         */
+        public RingEvent() {
+            this.id = 0;
+            this.evt = null;
+        }
+
+        /**
          * @return the wrapped UpdateEvent
          */
         public UpdateEvent getEvent() {
@@ -216,5 +250,25 @@ public class EventQueue {
             this.evt = event;
             return this;
         }
+    }
+    
+    public static void main(String[] args) throws InterruptedException {
+        EventQueue test = EventQueue.getInstance();
+        EventSource source = new EventSource() {
+            
+            @Override
+            public List<EventListener> updateEventListener() {
+                return null;
+            }
+            
+            @Override
+            public AtomicBoolean autoNotification() {
+                return null;
+            }
+        };
+        for (int i = 1; i < 500; i++) {
+            test.submitEvent(new UpdateEvent(source));
+        }
+        Thread.sleep(500);
     }
 }
