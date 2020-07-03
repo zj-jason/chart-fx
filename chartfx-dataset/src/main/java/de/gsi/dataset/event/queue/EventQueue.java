@@ -1,4 +1,4 @@
-package de.gsi.dataset.event;
+package de.gsi.dataset.event.queue;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -12,6 +12,9 @@ import com.lmax.disruptor.EventTranslatorOneArg;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.SleepingWaitStrategy;
 import com.lmax.disruptor.dsl.ProducerType;
+
+import de.gsi.dataset.event.EventListener;
+import de.gsi.dataset.event.UpdateEvent;
 
 /**
  * Global Event Queue implemented as a circular buffer.
