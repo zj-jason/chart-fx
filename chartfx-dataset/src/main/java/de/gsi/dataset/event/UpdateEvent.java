@@ -2,6 +2,8 @@ package de.gsi.dataset.event;
 
 import java.util.EventObject;
 
+import io.micrometer.core.instrument.Timer;
+
 /**
  * Event class that is passed along the notification performed by the {@code EventSource} class. The class is intended
  * to be further extended by named derivatives to allow for context-based event filters.
@@ -15,6 +17,7 @@ public class UpdateEvent extends EventObject {
     private static final long serialVersionUID = -3097725478448868303L;
     private final String msg;
     private transient Object payload;
+    private Timer.Sample start;
 
     /**
      * generates new update event
