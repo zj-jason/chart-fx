@@ -1,7 +1,9 @@
 package de.gsi.dataset.event.queue;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
@@ -9,6 +11,7 @@ import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lmax.disruptor.BatchEventProcessor;
 import com.lmax.disruptor.EventTranslatorOneArg;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.SleepingWaitStrategy;
@@ -27,7 +30,6 @@ import de.gsi.dataset.event.AxisRecomputationEvent;
 import de.gsi.dataset.event.EventListener;
 import de.gsi.dataset.event.EventSource;
 import de.gsi.dataset.event.UpdateEvent;
-import de.gsi.dataset.event.queue.EventQueueListener.EventQueueListenerStrategy;
 
 /**
  * Global Event Queue implemented as a circular buffer.
@@ -39,17 +41,21 @@ public class EventQueue {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventQueue.class);
     private static final int QUEUE_SIZE = 512; // must be power of 2
     private static EventQueue instance = null;
-    Counter eventCount = Metrics.counter("chartfx.event.count", "event", "all"); // micronaut event counter
+    Counter eventCount = Metrics.counter("chartfx.event.count", "event", "all"); // micrometer event counter
 
     private final RingBuffer<RingEvent> queue; // the ring buffer storing all events
-    // maps caching the last event id of different kinds of updates to allow consumers to skip lots of irrelevant updates
-    // TODO: check if this is necessary or if all listeners should better just iterate over all events
-    // private final Map<Object, Long> sourceUpdateMap = Collections.synchronizedMap(new HashMap<>());
-    // private final Map<Class<? extends UpdateEvent>, Long> eventClassUpdateMap = Collections.synchronizedMap(new HashMap<>());
+    private List<EventQueueListener> listeners = Collections.synchronizedList(new ArrayList<>());
 
     public static EventQueue getInstance() {
         if (instance == null) {
             instance = new EventQueue(QUEUE_SIZE);
+        }
+        return instance;
+    }
+
+    public static EventQueue getInstance(int size) {
+        if (instance == null) {
+            instance = new EventQueue(size);
         }
         return instance;
     }
@@ -66,22 +72,32 @@ public class EventQueue {
         );
 
         queue = disruptor.getRingBuffer();
+        // TODO: use more than one processing thread?
+        disruptor.handleEventsWith(new BatchEventProcessor<>(queue, queue.newBarrier(), this::handle));
         disruptor.start();
     }
 
-    long submitEvent(final UpdateEvent event) {
+    public long submitEvent(final UpdateEvent event) {
         return submitEvent(event, -1);
     }
 
-    long submitEvent(final UpdateEvent event, long parent) {
+    public long submitEvent(final UpdateEvent event, long parent) {
         final long current = publishEvent((evnt, id, updateEvent) -> {
             evnt.set(id, updateEvent, parent);
             evnt.setSubmitTime();
         }, event);
-        // eventClassUpdateMap.put(event.getClass(), current);
-        // sourceUpdateMap.put(event.getSource(), current);
         eventCount.increment();
         return current;
+    }
+
+    public void handle(final RingEvent evt, final long evtId, final boolean endOfBatch) {
+        List<EventQueueListener> listenersLocal;
+        synchronized (listeners) {
+            listenersLocal = new ArrayList<>(listeners);
+        }
+        for (final EventQueueListener listener : listenersLocal) {
+            listener.handle(evt, evtId, endOfBatch);
+        }
     }
 
     /**
@@ -105,20 +121,26 @@ public class EventQueue {
     /**
      * Waits for a follow up event to be added to the event queue.
      * This is useful e.g. for events which trigger recomputations.
+     * As this method blocks the current thread, it should be used with care and only sparingly.
      * 
      * @param parent event id which is supposed to trigger a new event.
      */
-    public void waitForEvent(long parent) {
-        EventSource source = (EventSource) queue.get(parent).evt.getSource();
+    public void waitForEvent(UpdateEvent parent) {
         final EventQueueListener eql = new EventQueueListener( //
                 queue, // ring buffer
-                (event, id) -> {}, // listener
-                EventQueueListenerStrategy.M_EVERY, // strategy
+                null, // listener
                 UpdateEvent.class, // EventType
                 null, // event source
-                e -> e.getParent() == parent); // filter
-        eql.setListener((evt, id) -> eql.halt());
-        eql.run(); // run listener on this thread and block it until the event occured
+                e -> e.getEvent().getParent() == parent, "waitForProcessed"); // filter
+        final AtomicBoolean blocked = new AtomicBoolean(true);
+        eql.setListener(evt -> {
+            listeners.remove(eql);
+            blocked.set(false);
+        });
+        listeners.add(eql);
+        while (!blocked.get()) {
+            Thread.onSpinWait();
+        }
     }
 
     /**
@@ -144,7 +166,7 @@ public class EventQueue {
      * @param timeout time in ms after which to return false when the event is not triggered
      * @return true if the event occured within timeout, false otherwise
      */
-    public boolean waitForEvent(final long parent, final int timeout) {
+    public boolean waitForEvent(final UpdateEvent parent, final int timeout) {
         LOGGER.atWarn().log("Timeout not yet implemented, ignoring");
         waitForEvent(parent);
         return true;
@@ -153,18 +175,10 @@ public class EventQueue {
     /**
      * Adds a listener on the common listener thread pool.
      * 
-     * @param filter Filter which updates to consider
      * @param listener event listener which gets called with the update
      */
-    public void addListener(Predicate<RingEvent> filter, EventListener listener) {
-        final EventQueueListener eql = new EventQueueListener( //
-                queue, // ring buffer
-                listener, // listener
-                EventQueueListenerStrategy.M_LAST_DROP, // strategy
-                UpdateEvent.class, // EventType
-                null, // event source
-                filter); // filter
-        eql.execute();
+    public void addListener(EventQueueListener listener) {
+        listeners.add(listener);
     }
 
     /**
@@ -173,26 +187,6 @@ public class EventQueue {
     public long getLastEvent() {
         return queue.getCursor();
     }
-
-    //    /**
-    //     * Return the last event which matches eventClass
-    //     * 
-    //     * @param eventClass the class of the event which matches.
-    //     * @return the last matching event's event id
-    //     */
-    //    public long getLastEvent(Class<UpdateEvent> eventClass) {
-    //        return eventClassUpdateMap.get(eventClass);
-    //    }
-    //
-    //    /**
-    //     * Return the last event which matches source
-    //     * 
-    //     * @param source the source event emitting the event
-    //     * @return the last matching event's event id
-    //     */
-    //    public long getLastEvent(Object source) {
-    //        return sourceUpdateMap.get(source);
-    //    }
 
     /**
      * Event wrapper class containing event id and the original update event
@@ -302,26 +296,44 @@ public class EventQueue {
                 return null;
             }
         };
-        // add listener
+        // add listener which listens to all events and publishes summaries about the encountered event types
         final EventQueueListener eql = new EventQueueListener( //
                 test.queue, // ring buffer
-                (event, id) -> System.err.println(id + " - " + event), // listener
-                EventQueueListenerStrategy.M_LAST_DROP, // strategy
-                UpdateEvent.class, // EventType
-                source, // event source
-                e -> !(e.evt instanceof AxisRecomputationEvent)); // filter
-        eql.execute();
+                new MultipleEventListener() {
+                    HashMap<Class<? extends UpdateEvent>, Integer> updates = new HashMap<>();
+
+                    @Override
+                    public void handle(UpdateEvent event) {
+                        if (event != null) {
+                            updates.put(event.getClass(), updates.getOrDefault(event.getClass(), 0) + 1);
+                        }
+                        if (!updates.isEmpty()) {
+                            System.err.println(updates);
+                            updates.clear();
+                        }
+                    }
+
+                    @Override
+                    public void aggregate(UpdateEvent event) {
+                        updates.put(event.getClass(), updates.getOrDefault(event.getClass(), 0) + 1);
+                    }
+                }, UpdateEvent.class, // EventType
+                null, // event source
+                e -> true, // filter
+                "EventPrintListener");
+        test.addListener(eql);
+        // add listener which listens to AxisRecomputationEvents and emits AxisRangeChangeEvents
         final EventQueueListener eql2 = new EventQueueListener( //
                 test.queue, // ring buffer
-                (event, id) -> {
-                    System.err.println(id + " = " + event);
-                    test.submitEvent(new AxisRangeChangeEvent(source, 3), id);
+                event -> {
+                    System.err.println(event);
+                    test.submitEvent(new AxisRangeChangeEvent(source, 3, event));
                 }, // listener
-                EventQueueListenerStrategy.M_EVERY, // strategy
                 AxisRecomputationEvent.class, // EventType
                 source, // event source
-                e -> true); // filter
-        eql2.execute();
+                e -> true, // filter
+                "AxisRecomputationListener");
+        test.addListener(eql2);
 
         // submit some test events
         while (true) {
@@ -332,12 +344,45 @@ public class EventQueue {
             UpdateEvent toWaitForEvent = new AxisRecomputationEvent(source, 3);
             long waitForId = test.submitEvent(toWaitForEvent);
             System.err.println("Wait event sent: " + waitForId);
-            test.waitForEvent(waitForId);
+            System.out.println("->" + test.getQueue().getMinimumGatingSequence() + " ... " + test.getQueue().getCursor());
+            test.waitForEvent(toWaitForEvent);
             System.err.println("Wait event acknowledged");
-            for (int i = 0; i < 30; i++) {
+            for (int i = 0; i < 10; i++) {
                 test.submitEvent(new UpdateEvent(source));
             }
-            Thread.sleep(2000); // sleep to let other threads finish working their backlog
+            Thread.sleep(200); // sleep to let other threads finish working their backlog
         }
+    }
+
+    /**
+     * @return The disruptor ring buffer
+     */
+    public RingBuffer<RingEvent> getQueue() {
+        return queue;
+    }
+
+    /**
+     * Submits the event and waits for its processing to be acknowledged
+     * @param event the Event to be submitted to the event queue
+     * @return the event id of the published event
+     */
+    public long submitEventAndWait(final UpdateEvent event) {
+        final EventQueueListener eql = new EventQueueListener( //
+                queue, // ring buffer
+                null, // listener
+                UpdateEvent.class, // EventType
+                null, // event source
+                e -> e.getEvent().getParent() == event, "waitForProcessed"); // filter
+        final AtomicBoolean blocked = new AtomicBoolean(true);
+        eql.setListener(evt -> {
+            listeners.remove(eql);
+            blocked.set(false);
+        });
+        listeners.add(eql);
+        long result = submitEvent(event);
+        while (blocked.get()) {
+            Thread.onSpinWait();
+        }
+        return result;
     }
 }

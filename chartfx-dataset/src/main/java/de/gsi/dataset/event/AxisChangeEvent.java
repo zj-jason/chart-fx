@@ -19,9 +19,10 @@ public class AxisChangeEvent extends UpdateEvent {
      * generates new update event
      * 
      * @param source the class issuing the event
+     * @param parent parent optional parent of the event
      */
-    public AxisChangeEvent(final EventSource source) {
-        super(source, null, null);
+    public AxisChangeEvent(final EventSource source, final UpdateEvent... parent) {
+        super(source, null, null, parent);
         this.dim = -1;
     }
 
@@ -30,9 +31,10 @@ public class AxisChangeEvent extends UpdateEvent {
      * 
      * @param source the class issuing the event
      * @param dim for which dimension the Axis data was changed
+     * @param parent parent optional parent of the event
      */
-    public AxisChangeEvent(final EventSource source, int dim) {
-        super(source, null, null);
+    public AxisChangeEvent(final EventSource source, int dim, final UpdateEvent... parent) {
+        super(source, null, null, parent);
         this.dim = dim;
     }
 
@@ -42,9 +44,10 @@ public class AxisChangeEvent extends UpdateEvent {
      * @param source the class issuing the event
      * @param msg a customised message to be passed along (e.g. for debugging)
      * @param dim for which dimension the Axis data was changed
+     * @param parent parent optional parent of the event
      */
-    public AxisChangeEvent(final EventSource source, final String msg, int dim) {
-        super(source, msg, null);
+    public AxisChangeEvent(final EventSource source, final String msg, int dim, final UpdateEvent... parent) {
+        super(source, msg, null, parent);
         this.dim = dim;
     }
 
@@ -55,9 +58,10 @@ public class AxisChangeEvent extends UpdateEvent {
      * @param msg a customised message to be passed along (e.g. for debugging)
      * @param payload a customised user pay-load to be passed to the listener
      * @param dim for which dimension the Axis data was changed
+     * @param parent parent optional parent of the event
      */
-    public AxisChangeEvent(final EventSource source, final String msg, final Object payload, int dim) {
-        super(source, msg, payload);
+    public AxisChangeEvent(final EventSource source, final String msg, final Object payload, int dim, final UpdateEvent... parent) {
+        super(source, msg, payload, parent);
         this.dim = dim;
     }
 

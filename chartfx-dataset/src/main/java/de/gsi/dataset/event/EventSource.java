@@ -115,6 +115,7 @@ public interface EventSource {
                 } catch (Exception e) { // NOPMD -- necessary since these are forwarded
                     exceptions.add(e);
                     exceptions.fillInStackTrace();
+                    e.printStackTrace();
                 }
                 return Boolean.FALSE;
             }));

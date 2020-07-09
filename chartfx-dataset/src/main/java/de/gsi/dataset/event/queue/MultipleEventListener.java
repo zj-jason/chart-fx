@@ -24,7 +24,7 @@ public interface MultipleEventListener extends EventListener {
      * @param event The {@code UpdateEvent} issued by the modified {@code UpdateSource}
      */
     @Override
-    void handle(UpdateEvent event, long id);
+    void handle(UpdateEvent event);
     
     /**
      * This method is called for each event but the last one. The listener can then update its state, so that the final 

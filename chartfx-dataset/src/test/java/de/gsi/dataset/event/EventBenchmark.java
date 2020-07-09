@@ -1,13 +1,13 @@
 package de.gsi.dataset.event;
 
-import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.Fork;
-import org.openjdk.jmh.annotations.Param;
-import org.openjdk.jmh.annotations.Scope;
-import org.openjdk.jmh.annotations.Setup;
-import org.openjdk.jmh.annotations.State;
-import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
+
+import java.util.concurrent.TimeUnit;
+
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.profile.StackProfiler;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.options.*;
 
 /**
  * Benchmark to compare callback based event listeners to ring buffer based event sourcing.
@@ -124,6 +124,25 @@ public class EventBenchmark {
     }
 
     public static void main(String[] args) throws Exception {
-        org.openjdk.jmh.Main.main(args);
+        Options opt = new OptionsBuilder()
+                // Specify which benchmarks to run. You can be more specific if you'd like to run only one benchmark per test.
+                .include(EventBenchmark.class.getName() + ".*")
+                // Set the following options as needed
+                .mode (Mode.Throughput)
+                .timeUnit(TimeUnit.SECONDS)
+                .warmupTime(TimeValue.seconds(10))
+                .warmupIterations(1)
+                .timeout(TimeValue.minutes(10))
+                .measurementTime(TimeValue.seconds(10))
+                .measurementIterations(5)
+                .threads(1)
+                .forks(2)
+                .warmupForks(2)
+                .shouldFailOnError(true)
+                .shouldDoGC(true)
+                .addProfiler(StackProfiler.class)
+                //.jvmArgs("-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintInlining")
+                .build();
+            new Runner(opt).run();
     }
 }

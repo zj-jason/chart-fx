@@ -14,7 +14,6 @@ public interface EventListener {
      * In general is is considered bad practice to modify the observed value in this method.
      *
      * @param event The {@code UpdateEvent} issued by the modified {@code UpdateSource}
-     * @param id id of the triggering event
      */
-    void handle(UpdateEvent event, long id);
+    void handle(UpdateEvent event);
 }
