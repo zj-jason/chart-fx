@@ -1,20 +1,28 @@
 package de.gsi.dataset.event.queue;
 
+import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Predicate;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.lmax.disruptor.AlertException;
 import com.lmax.disruptor.BatchEventProcessor;
-import com.lmax.disruptor.EventTranslatorOneArg;
+import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.Sequence;
+import com.lmax.disruptor.SequenceBarrier;
 import com.lmax.disruptor.SleepingWaitStrategy;
+import com.lmax.disruptor.TimeoutException;
+import com.lmax.disruptor.WaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.lmax.disruptor.util.DaemonThreadFactory;
@@ -29,6 +37,7 @@ import de.gsi.dataset.event.AxisRangeChangeEvent;
 import de.gsi.dataset.event.AxisRecomputationEvent;
 import de.gsi.dataset.event.EventListener;
 import de.gsi.dataset.event.EventSource;
+import de.gsi.dataset.event.EventThreadHelper;
 import de.gsi.dataset.event.UpdateEvent;
 
 /**
@@ -68,108 +77,65 @@ public class EventQueue {
                 size, // size of the ring buffer
                 DaemonThreadFactory.INSTANCE, // ThreadFactory
                 ProducerType.MULTI, // Allow multiple threads to insert new events
-                new SleepingWaitStrategy() // how the consumers will wait for new work
+                new BlockingWaitStrategy()
+        //new SleepingWaitStrategy() // how the consumers will wait for new work
         );
+        
 
         queue = disruptor.getRingBuffer();
         // TODO: use more than one processing thread?
         disruptor.handleEventsWith(new BatchEventProcessor<>(queue, queue.newBarrier(), this::handle));
         disruptor.start();
+        waiter = new BatchEventProcessor<>(queue, queue.newBarrier(), (evt, id, lastOfBatch) -> {
+            if (evt.isAck && evt.evt == waitEvent.get()) {
+                waiterRef.get().halt();
+            }
+        });
     }
 
-    public long submitEvent(final UpdateEvent event) {
-        return submitEvent(event, -1);
-    }
-
-    public long submitEvent(final UpdateEvent event, long parent) {
-        final long current = publishEvent((evnt, id, updateEvent) -> {
-            evnt.set(id, updateEvent, parent);
+    public void submitEvent(final UpdateEvent event) {
+        queue.publishEvent((evnt, id, updateEvent) -> {
+            evnt.set(id, updateEvent, false);
             evnt.setSubmitTime();
         }, event);
         eventCount.increment();
-        return current;
-    }
-
-    public void handle(final RingEvent evt, final long evtId, final boolean endOfBatch) {
-        List<EventQueueListener> listenersLocal;
-        synchronized (listeners) {
-            listenersLocal = new ArrayList<>(listeners);
-        }
-        for (final EventQueueListener listener : listenersLocal) {
-            listener.handle(evt, evtId, endOfBatch);
-        }
     }
 
     /**
-     * @param translator translator which fills the event
-     * @param argument additional argument
+     * @param event the original event which to ack
      */
-    private <A> long publishEvent(EventTranslatorOneArg<RingEvent, A> translator, A argument) {
-        final long sequence = queue.next();
-        try {
-            translator.translateTo(queue.get(sequence), sequence, argument);
-        } finally {
-            queue.publish(sequence);
+    public void submitEventAck(UpdateEvent event) {
+        queue.publishEvent((evnt, id, updateEvent) -> {
+            evnt.set(id, updateEvent, true);
+            evnt.setSubmitTime();
+        }, event);
+    }
+
+    public void handle(final RingEvent evt, final long evtId, final boolean endOfBatch) {
+        if (evt.isAck) {
+            return; // skip ACK events
         }
-        return sequence;
+        final List<EventQueueListener> listenersLocal;
+        synchronized (listeners) {
+            listenersLocal = new ArrayList<>(listeners);
+        }
+
+        final List<Future<?>> jobs = new ArrayList<>(listenersLocal.size());
+        for (final EventQueueListener listener : listenersLocal) {
+            Future<?> future = EventThreadHelper.getExecutorService().submit(() -> listener.handle(evt, evtId, endOfBatch));
+            jobs.add(future);
+        }
+        try {
+            // wait for submitted tasks to complete
+            for (final Future<?> future : jobs) {
+                future.get();
+            }
+        } catch (final Exception e) { // NOPMD -- necessary since these are forwarded
+        }
     }
 
     UpdateEvent getUpdate(long eventId) {
         return queue.get(eventId).getEvent();
-    }
-
-    /**
-     * Waits for a follow up event to be added to the event queue.
-     * This is useful e.g. for events which trigger recomputations.
-     * As this method blocks the current thread, it should be used with care and only sparingly.
-     * 
-     * @param parent event id which is supposed to trigger a new event.
-     */
-    public void waitForEvent(UpdateEvent parent) {
-        final EventQueueListener eql = new EventQueueListener( //
-                queue, // ring buffer
-                null, // listener
-                UpdateEvent.class, // EventType
-                null, // event source
-                e -> e.getEvent().getParent() == parent, "waitForProcessed"); // filter
-        final AtomicBoolean blocked = new AtomicBoolean(true);
-        eql.setListener(evt -> {
-            listeners.remove(eql);
-            blocked.set(false);
-        });
-        listeners.add(eql);
-        while (!blocked.get()) {
-            Thread.onSpinWait();
-        }
-    }
-
-    /**
-     * Waits for a follow up event to be added to the event queue.
-     * This is useful e.g. for events which trigger recomputations.
-     * Also specifies a timeout after which it will return with a false return value.
-     * e.g.
-     * 
-     * <pre>
-     * {@code
-     * long evntId = eventQueue.submitEvent(new RecomputeLimitsEvent(dimIndex))
-     * if (eventQueue.waitForEvent(evntId, 100) {
-     *     min = getMin();
-     *     max = getMax();
-     *     rescaleAxis(dimIndex, min, max);
-     * } else {
-     *     LOGGER.atWarn().log("Could not recompute axes");
-     * }
-     * }
-     * </pre>
-     * 
-     * @param parent event id which is supposed to trigger a new event.
-     * @param timeout time in ms after which to return false when the event is not triggered
-     * @return true if the event occured within timeout, false otherwise
-     */
-    public boolean waitForEvent(final UpdateEvent parent, final int timeout) {
-        LOGGER.atWarn().log("Timeout not yet implemented, ignoring");
-        waitForEvent(parent);
-        return true;
     }
 
     /**
@@ -199,13 +165,46 @@ public class EventQueue {
     }
 
     /**
+     * @return The disruptor ring buffer
+     */
+    public RingBuffer<RingEvent> getQueue() {
+        return queue;
+    }
+
+    
+
+    final AtomicReference<UpdateEvent> waitEvent = new AtomicReference<>();
+    final AtomicReference<BatchEventProcessor<RingEvent>> waiterRef = new AtomicReference<>();
+    final BatchEventProcessor<RingEvent> waiter;
+    
+    /**
+     * Submits the event and waits for its processing to be acknowledged
+     * 
+     * @param event the Event to be submitted to the event queue
+     */
+    public void submitEventAndWait(final UpdateEvent event) {
+        waiterRef.set(waiter);
+        waitEvent.set(event);
+        waiter.getSequence().set(queue.getCursor());
+        submitEvent(event);
+        waiter.run();
+    }
+
+    /**
+     * @param listener the listener to remove
+     */
+    public void removeListener(EventListener listener) {
+        LOGGER.atWarn().addArgument(listener).log("Removing Listeners not implemented yet, cannot remove listener: {}");
+    }
+
+    /**
      * Event wrapper class containing event id and the original update event
      */
     public static class RingEvent {
         private long id; // id of the event
         UpdateEvent evt; // the actual event
         private Sample start; // micrometer start timestamp for the submission time of this event, set by ring buffer
-        private long parent;
+        private boolean isAck;
 
         /**
          * @param id Sequence id of the event
@@ -222,6 +221,7 @@ public class EventQueue {
         public RingEvent() {
             this.id = 0;
             this.evt = null;
+            this.isAck = false;
         }
 
         /**
@@ -239,22 +239,15 @@ public class EventQueue {
         }
 
         /**
-         * @return the id of the parent event
-         */
-        public long getParent() {
-            return parent;
-        }
-
-        /**
          * @param id Id of the event
          * @param event wrapped UpdateEvent
-         * @param parent parent of the event
+         * @param isAck whether the event is an actual event or the acknowledgement of an event handler
          * @return itself
          */
-        public RingEvent set(long id, UpdateEvent event, final long parent) {
+        public RingEvent set(long id, UpdateEvent event, boolean isAck) {
             this.id = id;
             this.evt = event;
-            this.parent = parent;
+            this.isAck = isAck;
             return this;
         }
 
@@ -352,54 +345,13 @@ public class EventQueue {
             }
             // send an update and wait for its child to be published
             UpdateEvent toWaitForEvent = new AxisRecomputationEvent(source, 3);
-            long waitForId = test.submitEvent(toWaitForEvent);
-            System.err.println("Wait event sent: " + waitForId);
+            test.submitEventAndWait(toWaitForEvent);
             System.out.println("->" + test.getQueue().getMinimumGatingSequence() + " ... " + test.getQueue().getCursor());
-            test.waitForEvent(toWaitForEvent);
             System.err.println("Wait event acknowledged");
             for (int i = 0; i < 10; i++) {
                 test.submitEvent(new UpdateEvent(source));
             }
             Thread.sleep(200); // sleep to let other threads finish working their backlog
         }
-    }
-
-    /**
-     * @return The disruptor ring buffer
-     */
-    public RingBuffer<RingEvent> getQueue() {
-        return queue;
-    }
-
-    /**
-     * Submits the event and waits for its processing to be acknowledged
-     * @param event the Event to be submitted to the event queue
-     * @return the event id of the published event
-     */
-    public long submitEventAndWait(final UpdateEvent event) {
-        final EventQueueListener eql = new EventQueueListener( //
-                queue, // ring buffer
-                null, // listener
-                UpdateEvent.class, // EventType
-                null, // event source
-                e -> e.getEvent().getParent() == event, "waitForProcessed"); // filter
-        final AtomicBoolean blocked = new AtomicBoolean(true);
-        eql.setListener(evt -> {
-            listeners.remove(eql);
-            blocked.set(false);
-        });
-        listeners.add(eql);
-        long result = submitEvent(event);
-        while (blocked.get()) {
-            Thread.onSpinWait();
-        }
-        return result;
-    }
-
-    /**
-     * @param listener the listener to remove
-     */
-    public void removeListener(EventListener listener) {
-        LOGGER.atWarn().addArgument(listener).log("Removing Listeners not implemented yet, cannot remove listener: {}"); 
     }
 }
