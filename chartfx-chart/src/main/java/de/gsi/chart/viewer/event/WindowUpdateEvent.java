@@ -16,9 +16,10 @@ public class WindowUpdateEvent extends UpdateEvent {
      * generates new update event
      *
      * @param source the class issuing the event
+     * @param parent optional parent of the event
      */
-    public WindowUpdateEvent(final EventSource source) {
-        super(source, null, null);
+    public WindowUpdateEvent(final EventSource source, final UpdateEvent... parent) {
+        super(source, null, null, parent);
         type = Type.UNSPECIFIED;
     }
 
@@ -29,9 +30,10 @@ public class WindowUpdateEvent extends UpdateEvent {
      * @param msg a customised message to be passed along (e.g. for debugging)
      * @param payload a customised user pay-load to be passed to the listener
      * @param type WindowUpdateEvent event type
+     * @param parent optional parent of the event
      */
-    public WindowUpdateEvent(final EventSource source, final String msg, final Object payload, final Type type) {
-        super(source, msg, payload);
+    public WindowUpdateEvent(final EventSource source, final String msg, final Object payload, final Type type, final UpdateEvent... parent) {
+        super(source, msg, payload, parent);
         this.type = type;
     }
 
@@ -41,9 +43,10 @@ public class WindowUpdateEvent extends UpdateEvent {
      * @param source the class issuing the event
      * @param msg a customised message to be passed along (e.g. for debugging)
      * @param type WindowUpdateEvent event type
+     * @param parent optional parent of the event
      */
-    public WindowUpdateEvent(final EventSource source, final String msg, final Type type) {
-        super(source, msg, null);
+    public WindowUpdateEvent(final EventSource source, final String msg, final Type type, final UpdateEvent... parent) {
+        super(source, msg, null, parent);
         this.type = type;
     }
 
@@ -52,9 +55,10 @@ public class WindowUpdateEvent extends UpdateEvent {
      *
      * @param source the class issuing the event
      * @param type WindowUpdateEvent event type
+     * @param parent optional parent of the event
      */
-    public WindowUpdateEvent(final EventSource source, final Type type) {
-        super(source, null, null);
+    public WindowUpdateEvent(final EventSource source, final Type type, final UpdateEvent... parent) {
+        super(source, null, null, parent);
         this.type = type;
     }
 
