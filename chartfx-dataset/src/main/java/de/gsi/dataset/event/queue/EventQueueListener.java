@@ -7,6 +7,7 @@ import com.lmax.disruptor.RingBuffer;
 
 import de.gsi.dataset.event.EventListener;
 import de.gsi.dataset.event.EventSource;
+import de.gsi.dataset.event.EventThreadHelper;
 import de.gsi.dataset.event.UpdateEvent;
 import de.gsi.dataset.event.queue.EventQueue.RingEvent;
 import io.micrometer.core.instrument.Metrics;
@@ -51,7 +52,7 @@ public class EventQueueListener {
                 || (filterEventType != null && !filterEventType.isAssignableFrom(evt.evt.getClass())) //
                 || (filterPredicate != null && !filterPredicate.test(evt))) { //
             if (listener instanceof MultipleEventListener && endOfBatch) {
-                this.listener.handle(null);
+                EventThreadHelper.getExecutorService().execute(() -> this.listener.handle(null));
             }
             return;
         }
@@ -60,7 +61,9 @@ public class EventQueueListener {
         if (this.listener instanceof MultipleEventListener && !endOfBatch) {
             ((MultipleEventListener) this.listener).aggregate(evt.evt);
         } else {
-            this.listener.handle(evt.evt);
+            EventThreadHelper.getExecutorService().execute(() -> this.listener.handle(evt.evt));
+            // send Event finnished Event
+            EventQueue.getInstance().submitEvent(new UpdateEvent(evt.evt.getSource(), "handler finnished: " + listenerName, evt.evt));
         }
         // record the time from event creation to listener executed
         evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency.post", "eventType", evt.evt.getClass().getSimpleName(), "listener", listenerName));

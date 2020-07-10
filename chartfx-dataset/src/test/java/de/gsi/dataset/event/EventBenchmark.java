@@ -22,8 +22,8 @@ import org.openjdk.jmh.runner.options.*;
  */
 @State(Scope.Benchmark)
 public class EventBenchmark {
-    @Param({ "true", "false" })
-    private boolean parallel;
+    // @Param({ "true", "false" })
+    private boolean parallel = false;
 
     private TestEventSource es1;
     private TestEventSource es2;
@@ -77,13 +77,13 @@ public class EventBenchmark {
         es3 = new TestEventSource();
         es3.addListener(event ->
 
-                {
-                    int val = ((Integer) event.getPayLoad()).intValue() + 1;
-                    if (val < 10) {
-                        Blackhole.consumeCPU(100);
-                        es3.invokeListener(new UpdateEvent(es3, "test", val), parallel);
-                    }
-                });
+        {
+            int val = ((Integer) event.getPayLoad()).intValue() + 1;
+            if (val < 10) {
+                Blackhole.consumeCPU(100);
+                es3.invokeListener(new UpdateEvent(es3, "test", val), parallel);
+            }
+        });
     }
 
     @Benchmark
@@ -124,25 +124,15 @@ public class EventBenchmark {
     }
 
     public static void main(String[] args) throws Exception {
+        UpdateEvent.setDebug(false); // controls if stack information is added to events
         Options opt = new OptionsBuilder()
                 // Specify which benchmarks to run. You can be more specific if you'd like to run only one benchmark per test.
-                .include(EventBenchmark.class.getName() + ".*")
                 // Set the following options as needed
-                .mode (Mode.Throughput)
-                .timeUnit(TimeUnit.SECONDS)
-                .warmupTime(TimeValue.seconds(10))
-                .warmupIterations(1)
-                .timeout(TimeValue.minutes(10))
-                .measurementTime(TimeValue.seconds(10))
-                .measurementIterations(5)
-                .threads(1)
-                .forks(2)
-                .warmupForks(2)
-                .shouldFailOnError(true)
-                .shouldDoGC(true)
+                .mode(Mode.Throughput).timeUnit(TimeUnit.SECONDS).warmupTime(TimeValue.seconds(10)).warmupIterations(1).timeout(TimeValue.minutes(10))
+                .measurementTime(TimeValue.seconds(10)).measurementIterations(5).threads(1).forks(2).warmupForks(2).shouldFailOnError(true).shouldDoGC(true)
                 .addProfiler(StackProfiler.class)
                 //.jvmArgs("-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintInlining")
                 .build();
-            new Runner(opt).run();
+        new Runner(opt).run();
     }
 }

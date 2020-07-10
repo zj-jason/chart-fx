@@ -7,6 +7,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import de.gsi.dataset.event.queue.EventQueue;
 import de.gsi.dataset.utils.AggregateException;
 
 /**
@@ -30,12 +31,13 @@ public interface EventSource {
      * @throws NullPointerException if the listener is null
      */
     default void addListener(EventListener listener) {
-        synchronized (updateEventListener()) {
-            Objects.requireNonNull(listener, "UpdateListener must not be null");
-            if (!updateEventListener().contains(listener)) {
-                updateEventListener().add(listener);
-            }
-        }
+        //        synchronized (updateEventListener()) {
+        //            Objects.requireNonNull(listener, "UpdateListener must not be null");
+        //            if (!updateEventListener().contains(listener)) {
+        //                updateEventListener().add(listener);
+        //            }
+        //        }
+        EventQueue.getInstance().addListener(this, listener, "listener");
     }
 
     /**
@@ -77,62 +79,70 @@ public interface EventSource {
         if (updateEventListener() == null || !isAutoNotification()) {
             return;
         }
-        List<EventListener> eventListener;
-        synchronized (updateEventListener()) {
-            if (!isAutoNotification() || updateEventListener() == null || updateEventListener().isEmpty()) {
-                return;
-            }
-            eventListener = new ArrayList<>(updateEventListener());
+        if (executeParallel) {
+            EventQueue.getInstance().submitEvent(updateEvent);
+        } else {
+            EventQueue.getInstance().submitEventAndWait(updateEvent);
         }
-        if (!executeParallel || eventListener.size() == 1) {
-            // alt implementation:
-            final AggregateException exceptions = new AggregateException(
-                    EventSource.class.getSimpleName() + "(NonParallel)");
-            for (EventListener listener : eventListener) {
-                try {
-                    listener.handle(updateEvent);
-                } catch (Exception e) { // NOPMD -- necessary since these are forwarded
-                    exceptions.add(e);
-                }
-            }
-            if (!exceptions.isEmpty()) {
-                throw exceptions;
-            }
-            return;
-        }
-
-        // execute event listeners in parallel
-        final UpdateEvent event = updateEvent == null ? new UpdateEvent(this) : updateEvent;
-        final AggregateException exceptions = new AggregateException(
-                EventSource.class.getSimpleName() + "(Parallel)");
-        final ExecutorService es = EventThreadHelper.getExecutorService();
-        final List<Future<Boolean>> jobs = new ArrayList<>(eventListener.size());
-        for (EventListener listener : eventListener) {
-            jobs.add(es.submit(() -> {
-                try {
-                    listener.handle(event);
-                    return Boolean.TRUE;
-                } catch (Exception e) { // NOPMD -- necessary since these are forwarded
-                    exceptions.add(e);
-                    exceptions.fillInStackTrace();
-                    e.printStackTrace();
-                }
-                return Boolean.FALSE;
-            }));
-        }
-
-        try {
-            // wait for submitted tasks to complete
-            for (final Future<Boolean> future : jobs) {
-                future.get();
-            }
-        } catch (final Exception e) { // NOPMD -- necessary since these are forwarded
-            exceptions.add(new IllegalStateException("one parallel worker thread finished execution with error", e));
-        }
-        // all submitted tasks are completed
-        if (!exceptions.isEmpty()) {
-            throw exceptions;
-        }
+        //        if (updateEventListener() == null || !isAutoNotification()) {
+        //            return;
+        //        }
+        //        List<EventListener> eventListener;
+        //        synchronized (updateEventListener()) {
+        //            if (!isAutoNotification() || updateEventListener() == null || updateEventListener().isEmpty()) {
+        //                return;
+        //            }
+        //            eventListener = new ArrayList<>(updateEventListener());
+        //        }
+        //        if (!executeParallel || eventListener.size() == 1) {
+        //            // alt implementation:
+        //            final AggregateException exceptions = new AggregateException(
+        //                    EventSource.class.getSimpleName() + "(NonParallel)");
+        //            for (EventListener listener : eventListener) {
+        //                try {
+        //                    listener.handle(updateEvent);
+        //                } catch (Exception e) { // NOPMD -- necessary since these are forwarded
+        //                    exceptions.add(e);
+        //                }
+        //            }
+        //            if (!exceptions.isEmpty()) {
+        //                throw exceptions;
+        //            }
+        //            return;
+        //        }
+        //
+        //        // execute event listeners in parallel
+        //        final UpdateEvent event = updateEvent == null ? new UpdateEvent(this) : updateEvent;
+        //        final AggregateException exceptions = new AggregateException(
+        //                EventSource.class.getSimpleName() + "(Parallel)");
+        //        final ExecutorService es = EventThreadHelper.getExecutorService();
+        //        final List<Future<Boolean>> jobs = new ArrayList<>(eventListener.size());
+        //        for (EventListener listener : eventListener) {
+        //            jobs.add(es.submit(() -> {
+        //                try {
+        //                    listener.handle(event);
+        //                    return Boolean.TRUE;
+        //                } catch (Exception e) { // NOPMD -- necessary since these are forwarded
+        //                    exceptions.add(e);
+        //                    exceptions.fillInStackTrace();
+        //                    e.printStackTrace();
+        //                }
+        //                return Boolean.FALSE;
+        //            }));
+        //        }
+        //
+        //        try {
+        //            // wait for submitted tasks to complete
+        //            for (final Future<Boolean> future : jobs) {
+        //                future.get();
+        //            }
+        //        } catch (final Exception e) { // NOPMD -- necessary since these are forwarded
+        //            exceptions.add(new IllegalStateException("one parallel worker thread finished execution with error", e));
+        //        }
+        //        // all submitted tasks are completed
+        //        if (!exceptions.isEmpty()) {
+        //            throw exceptions;
+        //        }
     }
 
     /**
@@ -157,10 +167,11 @@ public interface EventSource {
      * @throws NullPointerException if the listener is null
      */
     default void removeListener(EventListener listener) {
-        synchronized (updateEventListener()) {
-            Objects.requireNonNull(listener, "UpdateListener must not be null");
-            updateEventListener().remove(listener);
-        }
+        EventQueue.getInstance().removeListener(listener);
+//        synchronized (updateEventListener()) {
+//            Objects.requireNonNull(listener, "UpdateListener must not be null");
+//            updateEventListener().remove(listener);
+//        }
     }
 
     /**

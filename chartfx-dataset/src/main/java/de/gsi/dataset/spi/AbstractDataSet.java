@@ -71,7 +71,7 @@ public abstract class AbstractDataSet<D extends AbstractStylable<D>> extends Abs
         if (!axisdescription.isDefined() && evt instanceof AxisRecomputationEvent) {
             recomputeLimits(axisDim);
 
-            invokeListener(new AxisRangeChangeEvent(this, "updated axis range for '" + axisdescription.getName() + "' '[" + axisdescription.getUnit() + "]'", axisDim));
+            invokeListener(new AxisRangeChangeEvent(this, "updated axis range for '" + axisdescription.getName() + "' '[" + axisdescription.getUnit() + "]'", axisDim, evt));
             axisUpdating.set(false);
             return;
         }

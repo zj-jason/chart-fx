@@ -177,8 +177,18 @@ public class EventQueue {
      * 
      * @param listener event listener which gets called with the update
      */
-    public void addListener(EventQueueListener listener) {
+    public void addListener(final EventQueueListener listener) {
         listeners.add(listener);
+    }
+
+    /**
+     * @param source The event source this listeners events should be filtered for
+     * @param listener the event listener to be called for all events
+     * @param name Name for the listener
+     */
+    public void addListener(final EventSource source, final EventListener listener, final String name) {
+        final EventQueueListener eql = new EventQueueListener(queue, listener, UpdateEvent.class, source, null, name);
+        addListener(eql);
     }
 
     /**
@@ -384,5 +394,12 @@ public class EventQueue {
             Thread.onSpinWait();
         }
         return result;
+    }
+
+    /**
+     * @param listener the listener to remove
+     */
+    public void removeListener(EventListener listener) {
+        LOGGER.atWarn().addArgument(listener).log("Removing Listeners not implemented yet, cannot remove listener: {}"); 
     }
 }
