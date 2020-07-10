@@ -10,19 +10,19 @@ package de.gsi.dataset.event;
 public class AxisRecomputationEvent extends AxisChangeEvent {
     private static final long serialVersionUID = -7285890268185312226L;
 
-    public AxisRecomputationEvent(EventSource evtSource) {
+    public AxisRecomputationEvent(EventSource evtSource, final UpdateEvent... parent) {
         super(evtSource);
     }
 
-    public AxisRecomputationEvent(EventSource evtSource, int dimension) {
-        super(evtSource, dimension);
+    public AxisRecomputationEvent(EventSource evtSource, int dimension, final UpdateEvent... parent) {
+        super(evtSource, dimension, parent);
     }
 
-    public AxisRecomputationEvent(EventSource evtSource, String msg, int dimension) {
-        super(evtSource, msg, dimension);
+    public AxisRecomputationEvent(EventSource evtSource, String msg, int dimension, final UpdateEvent... parent) {
+        super(evtSource, msg, dimension, parent);
     }
 
-    public AxisRecomputationEvent(EventSource evtSource, String msg, Object obj, int dimension) {
-        super(evtSource, msg, obj, dimension);
+    public AxisRecomputationEvent(EventSource evtSource, String msg, Object obj, int dimension, final UpdateEvent... parent) {
+        super(evtSource, msg, obj, dimension, parent);
     }
 }
