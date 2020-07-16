@@ -45,6 +45,7 @@ public class EventQueueListener {
         final Class<? extends UpdateEvent> eventClass = event.getClass();
         final EventSource filterSource = filterSourceRef.get();
         if (listener == null) {
+            evt.getHandlerCount().countDown();
             return;
         }
         if (filterSource != event.getSource() // incompatible source
@@ -53,14 +54,15 @@ public class EventQueueListener {
 
             if (listener instanceof MultipleEventListener && endOfBatch) { // handling previously aggregated events
                 final String evtClassName = eventClass.getSimpleName();
-                evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency", "eventType", evtClassName, "listener", listenerName));
+                //evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency", "eventType", evtClassName, "listener", listenerName));
 
                 this.listener.handle(null);
 
                 // record the time from event creation to listener executed
-                evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency.post", "eventType", evtClassName, "listener", listenerName));
+                //evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency.post", "eventType", evtClassName, "listener", listenerName));
             }
 
+            evt.getHandlerCount().countDown();
             return; // early return
         }
 
@@ -69,18 +71,15 @@ public class EventQueueListener {
         if (this.listener instanceof MultipleEventListener && !endOfBatch) {
             ((MultipleEventListener) this.listener).aggregate(event);
         } else {
-            final String evtClassName = eventClass.getSimpleName();
-            evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency", "eventType", evtClassName, "listener", listenerName));
+            //final String evtClassName = eventClass.getSimpleName();
+            //evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency", "eventType", evtClassName, "listener", listenerName));
 
             this.listener.handle(event);
 
-            // send Event finished Event TODO: remove allocation of update event
-            EventQueue.getInstance().submitEventAck(event);
-
             // record the time from event creation to listener executed
-            evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency.post", "eventType", evtClassName, "listener", listenerName));
+            // evt.getSubmitTimestamp().stop(Metrics.timer("chartfx.events.latency.post", "eventType", evtClassName, "listener", listenerName));
         }
-
+        evt.getHandlerCount().countDown();
     }
 
     /**

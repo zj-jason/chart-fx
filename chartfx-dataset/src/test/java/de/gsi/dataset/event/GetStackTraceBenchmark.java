@@ -1,6 +1,9 @@
 package de.gsi.dataset.event;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.runner.Runner;
@@ -21,9 +24,18 @@ public class GetStackTraceBenchmark {
     @Benchmark
     @Warmup(iterations = 1)
     @Fork(value = 2, warmups = 2)
-    public void oneToOne(Blackhole blackhole) {
+    public void callerFromTrace(Blackhole blackhole) {
         StackTraceElement[] strace = Thread.currentThread().getStackTrace();
         blackhole.consume(strace[2]);
+    }
+
+    @Benchmark
+    @Warmup(iterations = 1)
+    @Fork(value = 2, warmups = 2)
+    public void callerFromTraceWalker(Blackhole blackhole) {
+        List<StackWalker.StackFrame> stack = StackWalker.getInstance().walk(s ->
+                s.skip(1).limit(2).collect(Collectors.toList()));
+        blackhole.consume(stack.get(0));
     }
 
     public static void debugBenchmark() {
@@ -32,7 +44,7 @@ public class GetStackTraceBenchmark {
         for (int i = 0; i < 1000; i++) {
             System.out.println(i);
             // this is ok because we are not actually a benchmark but want to call this method anyway
-            cut.oneToOne(new Blackhole("Today's password is swordfish. I understand instantiating Blackholes directly is dangerous."));
+            cut.callerFromTrace(new Blackhole("Today's password is swordfish. I understand instantiating Blackholes directly is dangerous."));
         }
     }
 

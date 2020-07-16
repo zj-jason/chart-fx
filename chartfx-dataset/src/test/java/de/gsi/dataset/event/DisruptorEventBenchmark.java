@@ -20,7 +20,7 @@ import de.gsi.dataset.event.queue.EventQueueListener;
 @State(Scope.Benchmark)
 public class DisruptorEventBenchmark {
     // setup test Queue
-    final EventQueue test = EventQueue.getInstance(16);
+    final EventQueue test = EventQueue.getInstance(256);
     // dummy event source for emitting events to the ring buffer
     final EventSource source = new EventSource() {
         @Override
@@ -40,7 +40,7 @@ public class DisruptorEventBenchmark {
         final EventQueueListener eql2 = new EventQueueListener( //
                 test.getQueue(), // ring buffer
                 event -> {
-                    test.submitEvent(new AxisRangeChangeEvent(source, 3, event));
+                    //test.submitEvent(new AxisRangeChangeEvent(source, 3, event));
                 }, // listener
                 AxisRecomputationEvent.class, // EventType
                 source, // event source
@@ -51,47 +51,21 @@ public class DisruptorEventBenchmark {
 
     @Benchmark
     @Warmup(iterations = 1)
-    @Fork(value = 2, warmups = 2)
-    public void oneToOne(Blackhole blackhole) {
+    @Fork(value = 2, warmups = 1)
+    public void submitAndWait(Blackhole blackhole) {
         test.submitEventAndWait(new AxisRecomputationEvent(source, 3));
     }
 
-    public static void debugBenchmark() {
-        final DisruptorEventBenchmark cut = new DisruptorEventBenchmark();
-        cut.initialize();
-        for (int i = 0; i < 1000; i++) {
-            System.out.println(i);
-            cut.oneToOne(null);
-        }
+    @Benchmark
+    @Warmup(iterations = 1)
+    @Fork(value = 2, warmups = 1)
+    public void submitOnly(Blackhole blackhole) {
+        test.submitEvent(new AxisRecomputationEvent(source, 3));
     }
 
-    /**
-     * Launch this benchmark. Note that to start this benchmark from eclipse you first have to run mvn test-compile to
-     * run the annotations processor.
-     * 
-     * @param args cli arguments (unused)
-     * @throws Exception in case of errors
-     */
-    public static void main(String[] args) throws Exception {
-//        debugBenchmark();
-        Options opt = new OptionsBuilder()
-                // Specify which benchmarks to run. You can be more specific if you'd like to run only one benchmark per test.
-                .include(DisruptorEventBenchmark.class.getName() + ".*")
-                // Set the following options as needed
-                .mode(Mode.Throughput)
-                .timeUnit(TimeUnit.SECONDS)
-                .warmupTime(TimeValue.seconds(10))
-                .warmupIterations(1)
-                .timeout(TimeValue.minutes(10))
-                .measurementTime(TimeValue.seconds(10))
-                .measurementIterations(5)
-                .threads(1)
-                .forks(2).warmupForks(2)
-                .shouldFailOnError(true)
-                .shouldDoGC(true)
-                .addProfiler(StackProfiler.class)
-                //.jvmArgs("-XX:+UnlockDiagnosticVMOptions", "-XX:+PrintInlining")
-                .build();
-        new Runner(opt).run();
-    }
+    //@Benchmark
+    //@Warmup(iterations = 1)
+    //@Fork(value = 2, warmups = 1)
+    //public void baseline(Blackhole blackhole) {
+    //}
 }
