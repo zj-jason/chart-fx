@@ -10,6 +10,8 @@ import static de.gsi.dataset.DataSet.DIM_Z;
 
 import java.util.Arrays;
 
+import org.awaitility.Awaitility;
+import org.awaitility.Durations;
 import org.junit.jupiter.api.Test;
 
 import de.gsi.dataset.DataSet;
@@ -266,7 +268,7 @@ public class DimReductionDataSetTests {
             nEvent++;
         });
         testData.invokeListener(new UpdateEvent(testData, "testX"), true);
-        assertEquals(1, nEvent, "DataSet3D event propagated");
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(() -> nEvent == 1);
 
         assertArrayEquals(testData.getValues(DIM_X), sliceDataSetX.getValues(DIM_X));
         assertArrayEquals(testData.getValues(DIM_Y), sliceDataSetY.getValues(DIM_X));
@@ -276,7 +278,7 @@ public class DimReductionDataSetTests {
         assertArrayEquals(testData.getValues(DIM_Y), sliceDataSetY.getValues(DIM_X));
 
         sliceDataSetX.setMinValue(7.0);
-        assertEquals(2, nEvent, "DataSet3D event propagated");
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(() -> nEvent == 2);
 
         assertArrayEquals(Arrays.copyOfRange(testData.getValues(DIM_Z), 3, 6), sliceDataSetX.getValues(DIM_Y),
                 "second row match");
@@ -295,7 +297,7 @@ public class DimReductionDataSetTests {
                                    .build();
 
         DimReductionDataSet sliceDataSetX = new DimReductionDataSet(testData, DIM_X, Option.SLICE);
-        testData.invokeListener(new UpdateEvent(testData, "testX"), true);
+        testData.invokeListener(new UpdateEvent(testData, "testX"), false);
         assertEquals("input dataSet nDim < 3", sliceDataSetX.getWarningList().get(0));
     }
 
@@ -308,7 +310,7 @@ public class DimReductionDataSetTests {
                                    .build();
 
         DimReductionDataSet sliceDataSetX = new DimReductionDataSet(testData, DIM_X, Option.SLICE);
-        testData.invokeListener(new UpdateEvent(testData, "testX"), true);
+        testData.invokeListener(new UpdateEvent(testData, "testX"), false);
         assertEquals("input dataSet n_x * n_y != n_z", sliceDataSetX.getWarningList().get(0));
     }
 }

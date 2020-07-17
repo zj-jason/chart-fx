@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import de.gsi.dataset.event.*;
 import org.slf4j.Logger;
@@ -154,8 +155,12 @@ public class EventQueue {
     /**
      * @param listener the listener to remove
      */
-    public void removeListener(EventListener listener) {
-        LOGGER.atWarn().addArgument(listener).log("Removing Listeners not implemented yet, cannot remove listener: {}");
+    public void removeListener(EventListener listener, EventSource source) {
+        listeners.removeIf(eql -> eql.getListener() == listener && eql.getSource() == source);
+    }
+
+    public List<EventQueueListener> getListeners() {
+        return listeners;
     }
 
     /**

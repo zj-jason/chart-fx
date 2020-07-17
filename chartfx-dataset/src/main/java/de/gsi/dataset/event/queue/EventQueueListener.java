@@ -88,4 +88,12 @@ public class EventQueueListener {
     public void setListener(EventListener listener) {
         this.listener = listener;
     }
+
+    public EventListener getListener() {
+        return this.listener;
+    }
+
+    public EventSource getSource() {
+        return this.filterSourceRef.get();
+    }
 }

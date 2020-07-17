@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.awaitility.Awaitility;
+import org.awaitility.Durations;
 import org.junit.jupiter.api.Test;
 
 import de.gsi.dataset.AxisDescription;
@@ -349,7 +351,7 @@ public class TransposedDataSetTest {
 
         // change to grid data dynamically
         assertDoesNotThrow(() -> dataset.set(new double[][] { { 1, 2 }, { 3, 4 }, { 9, 8, 7, 6 } }));
-        assertEquals(2, datasetTransposed.grid);
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(() -> datasetTransposed.grid == 2);
     }
 
     private static double[] transposeArray(double[] data, int nx) {

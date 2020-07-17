@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import de.gsi.dataset.event.queue.EventQueue;
 import de.gsi.dataset.utils.AggregateException;
@@ -31,12 +32,6 @@ public interface EventSource {
      * @throws NullPointerException if the listener is null
      */
     default void addListener(EventListener listener) {
-        //        synchronized (updateEventListener()) {
-        //            Objects.requireNonNull(listener, "UpdateListener must not be null");
-        //            if (!updateEventListener().contains(listener)) {
-        //                updateEventListener().add(listener);
-        //            }
-        //        }
         EventQueue.getInstance().addListener(this, listener, "listener");
     }
 
@@ -56,7 +51,7 @@ public interface EventSource {
      * invoke object within update listener list
      */
     default void invokeListener() {
-        invokeListener(null);
+        invokeListener(new UpdateEvent(this));
     }
 
     /**
@@ -167,15 +162,13 @@ public interface EventSource {
      * @throws NullPointerException if the listener is null
      */
     default void removeListener(EventListener listener) {
-        EventQueue.getInstance().removeListener(listener);
-//        synchronized (updateEventListener()) {
-//            Objects.requireNonNull(listener, "UpdateListener must not be null");
-//            updateEventListener().remove(listener);
-//        }
+        EventQueue.getInstance().removeListener(listener, this);
     }
 
     /**
      * @return list containing all update event listener (needs to be provided by implementing class)
      */
-    List<EventListener> updateEventListener();
+    default List<EventListener> updateEventListener(){
+        return EventQueue.getInstance().getListeners().stream().filter(eql -> this == eql.getSource()).map(eql -> eql.getListener()).collect(Collectors.toList());
+    }
 }

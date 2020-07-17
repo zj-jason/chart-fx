@@ -11,15 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class TestEventSource implements EventSource {
     protected final AtomicBoolean autoNotification = new AtomicBoolean(true);
-    protected List<EventListener> eventListener = Collections.synchronizedList(new ArrayList<>()); // N.B. final omitted for tests
 
     @Override
     public AtomicBoolean autoNotification() {
         return autoNotification;
-    }
-
-    @Override
-    public List<EventListener> updateEventListener() {
-        return eventListener;
     }
 }
