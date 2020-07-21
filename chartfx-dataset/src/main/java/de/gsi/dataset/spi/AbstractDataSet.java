@@ -77,7 +77,7 @@ public abstract class AbstractDataSet<D extends AbstractStylable<D>> extends Abs
         }
 
         // forward axis description event to DataSet listener
-        invokeListener(e);
+        //invokeListener(e); // TODO: at the moment this leads to an infinite loop, either rewrite source or not republish at all
         axisUpdating.set(false);
     };
 
