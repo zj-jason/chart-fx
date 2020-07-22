@@ -149,64 +149,43 @@ public class MathDataSetTests {
         assertEquals(0, counter2.get());
         counter1.set(0);
 
-        // TODO: fix this test error
-        //// null does not invoke update
-        //rawDataSetRef.invokeListener(null, false);
-        //assertEquals(0, counter1.get());
-        //assertEquals(0, counter2.get());
-
         // null does not invoke update
         rawDataSetRef.invokeListener(new UpdateEvent(rawDataSetRef, "wrong event"), false);
         Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(0));
         Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(0));
 
-        // TODO: fix this test error
-        //// null does not invoke update
-        //rawDataSetRef.invokeListener(new UpdateEvent(identityDataSet, "wrong reference", false));
-        //assertEquals(0, counter1.get());
-        //assertEquals(0, counter2.get());
-
         // AddedDataEvent does invoke update
-        rawDataSetRef.invokeListener(new AddedDataEvent(rawDataSetRef, "OK reference", false), false);
+        rawDataSetRef.invokeListener(new AddedDataEvent(rawDataSetRef, "OK reference", false));
         Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(1));
         Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(1));
 
         // RemovedDataEvent does invoke update
-        rawDataSetRef.invokeListener(new RemovedDataEvent(rawDataSetRef, "OK reference", false), false);
+        rawDataSetRef.invokeListener(new RemovedDataEvent(rawDataSetRef, "OK reference", false));
         Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(2));
         Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(2));
-        // TODO: fix this test error
-        // rawDataSetRef.invokeListener(new RemovedDataEvent(identityDataSet, "wrong reference", false), false);
-        // Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(3));
-        // Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(3));
-        counter1.incrementAndGet();
-        counter2.incrementAndGet();
 
         // UpdatedDataEvent does invoke update
-        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false), false);
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(4));
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(4));
+        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(3));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(3));
 
-        // TODO: fix event listener size reporting
-        // assertEquals(1, rawDataSetRef.updateEventListener().size());
         identityDataSet.deregisterListener();
-        // assertEquals(0, rawDataSetRef.updateEventListener().size());
-        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false), false);
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(4));
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(4));
+        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(3));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(3));
 
         identityDataSet.registerListener();
-        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false), false);
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(5));
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(5));
+        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(4));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(4));
 
         assertEquals(1, identityDataSet.getSourceDataSets().size());
         identityDataSet.getSourceDataSets().clear();
         assertEquals(0, identityDataSet.getSourceDataSets().size());
 
-        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false), false);
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(5));
-        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(6));
+        rawDataSetRef.invokeListener(new UpdatedDataEvent(rawDataSetRef, "OK reference", false));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter1::get, Matchers.equalTo(4));
+        Awaitility.await().atMost(Durations.ONE_SECOND).until(counter2::get, Matchers.equalTo(5));
     }
 
     protected static DoubleDataSet generateSineWaveData(final int nData) {
