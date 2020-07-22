@@ -10,6 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import com.lmax.disruptor.ExceptionHandler;
+import com.lmax.disruptor.dsl.EventHandlerGroup;
 import de.gsi.dataset.event.*;
 import de.gsi.dataset.utils.AssertUtils;
 import org.slf4j.Logger;
@@ -71,7 +73,23 @@ public class EventQueue {
         );
         queue = disruptor.getRingBuffer();
         // TODO: use more than one processing thread?
-        disruptor.handleEventsWith(new BatchEventProcessor<>(queue, queue.newBarrier(), this::handle));
+        disruptor.handleEventsWith(new BatchEventProcessor<RingEvent>(queue, queue.newBarrier(), this::handle));
+        disruptor.setDefaultExceptionHandler(new ExceptionHandler<RingEvent>() {
+                    @Override
+                    public void handleEventException(final Throwable ex, final long sequence, final RingEvent event) {
+                        LOGGER.atError().addArgument(sequence).addArgument(event).setCause(ex).log("Error handling event {}: {}");
+                    }
+
+                    @Override
+                    public void handleOnStartException(final Throwable ex) {
+                        LOGGER.atError().setCause(ex).log("Error starting event processor");
+                    }
+
+                    @Override
+                    public void handleOnShutdownException(final Throwable ex) {
+                        LOGGER.atError().setCause(ex).log("Error stopping event processor");
+                    }
+                });
         disruptor.start();
     }
 
