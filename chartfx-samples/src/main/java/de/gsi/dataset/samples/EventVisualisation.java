@@ -58,7 +58,10 @@ public class EventVisualisation extends Application {
     //private final CategoryAxis yAxis1 = new CategoryAxis("Event Source and Name");
     private final DefaultNumericAxis yAxis1 = new DefaultNumericAxis("Event Source and Name");
     private final DefaultNumericAxis xAxis1 = new DefaultNumericAxis("Time", "s");
-    private final MultiDimDoubleDataSet ds = (MultiDimDoubleDataSet) new DataSetBuilder("MockDataSet").setValues(DataSet.DIM_Z, new double[][] {{1.0,2,3}, {8,7,5}, {9,7,4}}).build();
+    private final MultiDimDoubleDataSet ds = (MultiDimDoubleDataSet) new DataSetBuilder("MockDataSet")
+            .setValues(DataSet.DIM_X, new double[] {0,1,2})
+            .setValues(DataSet.DIM_Y, new double[] {0,1,2})
+            .setValues(DataSet.DIM_Z, new double[][] {{1.0,2,3}, {8,7,5}, {9,7,4}}).build();
     private final DimReductionDataSet reducedDataSet = new DimReductionDataSet(ds, 1, DimReductionDataSet.Option.MEAN);
     private Thread eventThread;
 
