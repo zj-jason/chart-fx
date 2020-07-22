@@ -66,14 +66,15 @@ public abstract class AbstractDataSet<D extends AbstractStylable<D>> extends Abs
         axisUpdating.set(true);
         final AxisChangeEvent evt = (AxisChangeEvent) e;
         final int axisDim = evt.getDimension();
-        AxisDescription axisdescription = getAxisDescription(axisDim);
+        if (evt instanceof AxisRecomputationEvent && axisDim <= getDimension()) {
+            AxisDescription axisdescription = getAxisDescription(axisDim);
+            if (!axisdescription.isDefined()) {
+                recomputeLimits(axisDim);
 
-        if (!axisdescription.isDefined() && evt instanceof AxisRecomputationEvent) {
-            recomputeLimits(axisDim);
-
-            invokeListener(new AxisRangeChangeEvent(this, "updated axis range for '" + axisdescription.getName() + "' '[" + axisdescription.getUnit() + "]'", axisDim, evt));
-            axisUpdating.set(false);
-            return;
+                invokeListener(new AxisRangeChangeEvent(this, "updated axis range for '" + axisdescription.getName() + "' '[" + axisdescription.getUnit() + "]'", axisDim, evt));
+                axisUpdating.set(false);
+                return;
+            }
         }
 
         // forward axis description event to DataSet listener

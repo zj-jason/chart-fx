@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import de.gsi.dataset.event.*;
+import de.gsi.dataset.utils.AssertUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,6 +76,7 @@ public class EventQueue {
     }
 
     public void submitEvent(final UpdateEvent event) {
+        AssertUtils.notNull("event", event);
         queue.publishEvent((evnt, id, updateEvent) -> {
             evnt.set(id, updateEvent);
             evnt.setSubmitTime();
@@ -89,6 +91,7 @@ public class EventQueue {
      * @param event the Event to be submitted to the event queue
      */
     public void submitEventAndWait(final UpdateEvent event) {
+        AssertUtils.notNull("event", event);
         final AtomicReference<RingEvent> evt = new AtomicReference<>();
         queue.publishEvent((evnt, id, updateEvent) -> {
             evt.set(evnt);
@@ -234,92 +237,6 @@ public class EventQueue {
 
         public CountDownLatch getHandlerCount() {
             return handlers;
-        }
-    }
-
-    /**
-     * Publish some events to a test event source and have some dummy listeners print them to stderr
-     *
-     * @param args CLI Arguments
-     * @throws InterruptedException When the thread is interrupted
-     */
-    public static void main(String[] args) throws InterruptedException {
-        // setup micrometer
-        Metrics.addRegistry(new AtlasMeterRegistry(new AtlasConfig() {
-            @Override
-            public Duration step() {
-                return Duration.ofSeconds(10);
-            }
-
-            @Override
-            public String get(String k) {
-                return null;
-            }
-        }));
-        // setup test Queue
-        EventQueue test = EventQueue.getInstance();
-        // dummy event source for emitting events to the ring buffer
-        EventSource source = new EventSource() {
-            @Override
-            public List<EventListener> updateEventListener() {
-                return Collections.emptyList();
-            }
-
-            @Override
-            public AtomicBoolean autoNotification() {
-                return null;
-            }
-        };
-        // add listener which listens to all events and publishes summaries about the encountered event types
-        final EventQueueListener eql = new EventQueueListener( //
-                test.queue, // ring buffer
-                new MultipleEventListener() {
-                    final HashMap<Class<? extends UpdateEvent>, Integer> updates = new HashMap<>();
-
-                    @Override
-                    public void handle(UpdateEvent event) {
-                        if (event != null) {
-                            updates.put(event.getClass(), updates.getOrDefault(event.getClass(), 0) + 1);
-                        }
-                        if (!updates.isEmpty()) {
-                            updates.clear();
-                        }
-                    }
-
-                    @Override
-                    public void aggregate(UpdateEvent event) {
-                        updates.put(event.getClass(), updates.getOrDefault(event.getClass(), 0) + 1);
-                    }
-                }, UpdateEvent.class, // EventType
-                null, // event source
-                e -> true, // filter
-                "EventPrintListener");
-        test.addListener(eql);
-        // add listener which listens to AxisRecomputationEvents and emits AxisRangeChangeEvents
-        final EventQueueListener eql2 = new EventQueueListener( //
-                test.queue, // ring buffer
-                event -> {
-                    test.submitEvent(new AxisRangeChangeEvent(source, 3, event));
-                }, // listener
-                AxisRecomputationEvent.class, // EventType
-                source, // event source
-                e -> true, // filter
-                "AxisRecomputationListener");
-        test.addListener(eql2);
-
-        // submit some test events
-        while (true) {
-            for (int i = 0; i < 2; i++) {
-                test.submitEvent(new UpdateEvent(source));
-            }
-            // send an update and wait for its child to be published
-            UpdateEvent toWaitForEvent = new AxisRecomputationEvent(source, 3);
-            test.submitEventAndWait(toWaitForEvent);
-            System.out.println("->" + test.getQueue().getMinimumGatingSequence() + " ... " + test.getQueue().getCursor());
-            for (int i = 0; i < 10; i++) {
-                test.submitEvent(new UpdateEvent(source));
-            }
-            Thread.sleep(200); // sleep to let other threads finish working their backlog
         }
     }
 }

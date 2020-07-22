@@ -114,7 +114,7 @@ public class EventVisualisation extends Application {
         final List<String> categories = new ArrayList<>();
         final EventProcessor eventProcessor = new BatchEventProcessor<>(queue, queue.newBarrier(), (ev, id, lastOfBatch) -> {
             EventSource source = ev.getEvent().getSource();
-            if (source == eventDataset) {
+            if (source == eventDataset) { // also ignore chart axes?
                 return; // early return to prevent infinite loop
             }
             LOGGER.atError().addArgument(id).log("Adding Event: {}");

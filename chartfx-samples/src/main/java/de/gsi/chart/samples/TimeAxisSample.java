@@ -1,5 +1,6 @@
 package de.gsi.chart.samples;
 
+import de.gsi.dataset.event.UpdatedDataEvent;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -40,7 +41,7 @@ public class TimeAxisSample extends Application {
         }
         dataSet.autoNotification().set(true);
 
-        Platform.runLater(() -> dataSet.fireInvalidated(null));
+        Platform.runLater(() -> dataSet.fireInvalidated(new UpdatedDataEvent(dataSet)));
         ProcessingProfiler.getTimeDiff(startTime, "adding data into DataSet");
     }
 

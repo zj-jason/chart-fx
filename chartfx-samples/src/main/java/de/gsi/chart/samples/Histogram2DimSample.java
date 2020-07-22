@@ -4,6 +4,7 @@ import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import de.gsi.dataset.event.UpdatedDataEvent;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -52,8 +53,8 @@ public class Histogram2DimSample extends Application {
         }
         histogram1.autoNotification().set(true);
         histogram2.autoNotification().set(true);
-        histogram1.fireInvalidated(null);
-        histogram2.fireInvalidated(null);
+        histogram1.fireInvalidated(new UpdatedDataEvent(histogram1));
+        histogram2.fireInvalidated(new UpdatedDataEvent(histogram2));
 
         if (counter % 500 == 0) {
             // reset distribution every now and then
