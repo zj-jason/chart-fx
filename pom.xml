@@ -27,6 +27,8 @@
         <module>chartfx-samples</module>
         <module>chartfx-report</module>
         <module>chartfx-generate</module>
+        <module>rda-legacy</module>
+        <module>rda-light</module>
     </modules>
 
     <properties>
