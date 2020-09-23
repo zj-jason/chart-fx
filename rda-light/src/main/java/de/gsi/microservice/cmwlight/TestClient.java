@@ -7,6 +7,8 @@ import de.gsi.serializer.spi.FastByteBuffer;
 import de.gsi.serializer.spi.WireDataFieldDescription;
 import org.zeromq.*;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -83,30 +85,46 @@ public class TestClient {
         System.out.println("setup socket");
         controlChannel.setSndHWM(0);
         controlChannel.setRcvHWM(0);
-        controlChannel.setIdentity("SYSPC004/1/1337/5".getBytes()); // hostname/process/id/channel
+        controlChannel.setIdentity(getIdentity().getBytes()); // hostname/process/id/channel
         controlChannel.setLinger(0);
+    }
+
+    private String getIdentity() {
+        String hostname;
+        try {
+            hostname = InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            hostname = "localhost";
+        }
+        final long processId = ProcessHandle.current().pid();
+        final long connectionId = 1l;
+        final long channelId = 1l;
+        return hostname + '/' + processId + '/' + connectionId + '/' + channelId;
     }
 
      private void receiveData() {
         System.out.println();
          final ZMsg data = ZMsg.recvMsg(controlChannel);
-         if (Arrays.equals(data.getFirst().getData(), new byte[]{3})) {
+         final ZFrame firstFrame = data.pollFirst();
+         if (Arrays.equals(firstFrame.getData(), new byte[]{3})) {
              System.out.println("Heartbeat received");
+             // TODO: reset Heartbeat
              return;
          }
-         if (!Arrays.equals(data.getFirst().getData(), new byte[]{2})) {
+         if (!Arrays.equals(firstFrame.getData(), new byte[]{2})) {
              System.out.println("expected reply message, but got: " + data);
          }
-         final byte[] descriptor = data.getLast().getData();
+         final byte[] descriptor = data.pollLast().getData();
          if (Arrays.equals(data.getLast().getData(), new byte[] {MT_HEADER})) {
              System.out.println("received header: " + data);
+         } else if (Arrays.equals(data.getLast().getData(), new byte[] {MT_HEADER, MT_BODY_EXCEPTION})) {
+                 System.out.println("received exception: " + data);
          } else if (!Arrays.equals(data.getLast().getData(), new byte[] {MT_HEADER, MT_BODY, MT_BODY_DATA_CONTEXT})) {
              System.out.println("expected reply message, but got: " + Arrays.toString(data.getLast().getData()));
              return;
          } else {
              System.out.println("received reply: " + data);
          }
-         data.pollFirst();
          for (final byte desc : descriptor) {
              switch (desc) {
                  case MT_HEADER:
