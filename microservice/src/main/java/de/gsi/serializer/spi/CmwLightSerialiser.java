@@ -1073,11 +1073,8 @@ public class CmwLightSerialiser implements IoSerialiser {
 
         final int parentDataStart = parent.getDataStartPosition();
         if (parentDataStart >= 0) { // N.B. needs to be '>=' since CMW header is an incomplete field header containing only an 'nEntries<int>' data field
-            buffer.position(parentDataStart);
-            final int nEntries = buffer.getInt();
-            buffer.position(parentDataStart);
-            buffer.putInt(nEntries + 1);
-            buffer.position(lastFieldHeader.getDataStartPosition());
+            final int nEntries = buffer.getInt(parentDataStart);
+            buffer.putInt(parentDataStart, nEntries + 1);
         }
     }
 
