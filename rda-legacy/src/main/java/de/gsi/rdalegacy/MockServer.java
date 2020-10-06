@@ -7,8 +7,6 @@ import cern.cmw.rda3.common.exception.RdaException;
 import cern.cmw.rda3.common.exception.ServerException;
 import cern.cmw.rda3.impl.common.data.AcquiredContextImpl;
 import cern.cmw.rda3.impl.transport.zeromq.ZMQAdapter;
-import cern.cmw.rda3.server.core.GetRequest;
-import cern.cmw.rda3.server.core.Server;
 import cern.cmw.rda3.testing.NameServiceMock;
 import cern.cmw.rda3.testing.ServerMock;
 import cern.cmw.util.config.ConfigurationBuilder;

@@ -55,18 +55,18 @@ The last frame is the so called descriptor which contains one byte for each data
 - 0x04: Exception
 
 The header field REQ_TYPE (byte) specifies the type of request or replies:
-- RT_GET = 0
-- RT_SET = 1
-- RT_CONNECT = 2 // ?
-- RT_REPLY = 3
-- RT_EXCEPTION = 4
-- RT_SUBSCRIBE = 5
-- RT_UNSUBSCRIBE = 6
-- RT_NOTIFICATION_DATA = 7
-- RT_NOTIFICATION_EXC = 8
-- RT_SUBSCRIBE_EXCEPTION = 9
-- RT_EVENT = 10 // Also used as close
-- RT_SESSION_CONFIRM = 11
+- `RT_GET` = 0
+- `RT_SET` = 1
+- `RT_CONNECT` = 2 // ?
+- `RT_REPLY` = 3
+- `RT_EXCEPTION` = 4
+- `RT_SUBSCRIBE` = 5
+- `RT_UNSUBSCRIBE` = 6
+- `RT_NOTIFICATION_DATA` = 7
+- `RT_NOTIFICATION_EXC` = 8
+- `RT_SUBSCRIBE_EXCEPTION` = 9
+- `RT_EVENT` = 10 // Also used as close
+- `RT_SESSION_CONFIRM` = 11
 
 #### Get
 A get request consists of the following parts:
