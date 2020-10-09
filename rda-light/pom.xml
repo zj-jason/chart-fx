@@ -18,28 +18,36 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.zeromq</groupId>
-            <artifactId>jeromq</artifactId>
-            <version>0.5.2</version>
+            <groupId>de.gsi.dataset</groupId>
+            <artifactId>chartfx-dataset</artifactId>
+            <version>11.2.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>de.gsi</groupId>
             <artifactId>microservice</artifactId>
             <version>11.2.0-SNAPSHOT</version>
         </dependency>
+        <!-- ZeroMQ messaging for implementing legacy cmw protocol -->
         <dependency>
-            <groupId>de.gsi.dataset</groupId>
-            <artifactId>chartfx-dataset</artifactId>
-            <version>11.2.0-SNAPSHOT</version>
+            <groupId>org.zeromq</groupId>
+            <artifactId>jeromq</artifactId>
+            <version>0.5.2</version>
         </dependency>
+        <!-- fast ring buffer implementation for inter-thread communication -->
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>3.3.11</version>
+        </dependency>
+        <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-simple</artifactId>
+            <artifactId>slf4j-api</artifactId>
             <version>2.0.0-alpha0</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
+            <artifactId>slf4j-simple</artifactId>
             <version>2.0.0-alpha0</version>
         </dependency>
     </dependencies>
