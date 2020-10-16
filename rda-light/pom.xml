@@ -20,12 +20,34 @@
         <dependency>
             <groupId>de.gsi.dataset</groupId>
             <artifactId>chartfx-dataset</artifactId>
-            <version>11.2.0-SNAPSHOT</version>
+            <version>${revision}${sha1}${changelist}</version>
         </dependency>
         <dependency>
             <groupId>de.gsi</groupId>
             <artifactId>microservice</artifactId>
-            <version>11.2.0-SNAPSHOT</version>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <!-- REST + SSE Client Libraries for LSA Access -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.4.1</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-sse</artifactId>
+            <version>4.4.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.moshi</groupId>
+            <artifactId>moshi</artifactId>
+            <version>1.9.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.moshi</groupId>
+            <artifactId>moshi-adapters</artifactId>
+            <version>1.9.2</version>
         </dependency>
         <!-- ZeroMQ messaging for implementing legacy cmw protocol -->
         <dependency>
@@ -33,22 +55,11 @@
             <artifactId>jeromq</artifactId>
             <version>0.5.2</version>
         </dependency>
-        <!-- fast ring buffer implementation for inter-thread communication -->
-        <dependency>
-            <groupId>com.lmax</groupId>
-            <artifactId>disruptor</artifactId>
-            <version>3.3.11</version>
-        </dependency>
         <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>2.0.0-alpha0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
-            <version>2.0.0-alpha0</version>
+            <version>${chartfx.slf4j.version}</version>
         </dependency>
     </dependencies>
 </project>
