@@ -1,0 +1,49 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.gsi</groupId>
+        <artifactId>chartfx</artifactId>
+        <version>${revision}${sha1}${changelist}</version>
+        <relativePath>..</relativePath>
+    </parent>
+    <groupId>de.gsi.microservice</groupId>
+    <artifactId>aggregate-disruptor</artifactId>
+    <name>aggregate-disruptor</name>
+
+    <description>
+        Utilities framework to aggregate data from multiple sources, process it and make it available to the majordomo broker.
+        Implementation using LMAX disruptor.
+    </description>
+
+    <dependencies>
+        <!-- fast ring buffer implementation for inter-thread communication -->
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>3.3.11</version>
+        </dependency>
+        <dependency>
+            <groupId>de.gsi.dataset</groupId>
+            <artifactId>chartfx-dataset</artifactId>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.gsi</groupId>
+            <artifactId>microservice</artifactId>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.gsi.microservice</groupId>
+            <artifactId>rda-light</artifactId>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${chartfx.slf4j.version}</version>
+        </dependency>
+    </dependencies>
+</project>

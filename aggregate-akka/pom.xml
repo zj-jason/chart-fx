@@ -1,0 +1,64 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.gsi</groupId>
+        <artifactId>chartfx</artifactId>
+        <version>${revision}${sha1}${changelist}</version>
+        <relativePath>..</relativePath>
+    </parent>
+    <groupId>de.gsi.microservice</groupId>
+    <artifactId>aggregate-akka</artifactId>
+    <name>aggregate-akka</name>
+
+    <description>
+        Utilities framework to aggregate data from multiple sources, process it and make it available to the majordomo broker.
+        Implementation using Akka Actors/Streaming.
+    </description>
+
+    <properties>
+        <akka.version>2.6.10</akka.version>
+        <scala.binary.version>2.13</scala.binary.version>
+        <akka.http.version>10.1.11</akka.http.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-stream-typed_${scala.binary.version}</artifactId>
+            <version>${akka.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.lightbend.akka</groupId>
+            <artifactId>akka-stream-alpakka-sse_${scala.binary.version}</artifactId>
+            <version>2.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-http_${scala.binary.version}</artifactId>
+            <version>${akka.http.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.gsi.dataset</groupId>
+            <artifactId>chartfx-dataset</artifactId>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.gsi</groupId>
+            <artifactId>microservice</artifactId>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <dependency>
+            <groupId>de.gsi.microservice</groupId>
+            <artifactId>rda-light</artifactId>
+            <version>${revision}${sha1}${changelist}</version>
+        </dependency>
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${chartfx.slf4j.version}</version>
+        </dependency>
+    </dependencies>
+</project>

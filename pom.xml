@@ -29,6 +29,9 @@
         <module>chartfx-generate</module>
         <module>rda-legacy</module>
         <module>rda-light</module>
+        <module>aggregate-spark</module>
+        <module>aggregate-disruptor</module>
+        <module>aggregate-akka</module>
     </modules>
 
     <properties>
@@ -365,7 +368,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>1.5</version>
+                        <version>1.6</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
