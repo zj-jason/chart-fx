@@ -1,4 +1,4 @@
-package de.gsi.microservice.cmwlight;
+package de.gsi.microservice.aggregate.lsa;
 
 /**
  * Extension of the standard FAIR Selector to include the (unique) LSA IDs.

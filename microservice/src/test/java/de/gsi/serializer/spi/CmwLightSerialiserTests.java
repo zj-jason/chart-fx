@@ -6,6 +6,9 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 
 public class CmwLightSerialiserTests {
+    /**
+     * Tests parsing real world cmw data
+     */
     @Test
     public void testCmwData() {
         final CmwLightSerialiser serialiser = new CmwLightSerialiser(FastByteBuffer.wrap(new byte[]{

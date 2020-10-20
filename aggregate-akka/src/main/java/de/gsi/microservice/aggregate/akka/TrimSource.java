@@ -31,28 +31,28 @@ public class TrimSource extends GraphStage<SourceShape<String>> {
     }
 
 
-    public static Source<String> create() {
+    // public static Source<String> create() {
 
-    }
+    // }
 
     public TrimSource () {
-        final Http http = Http.get(system.classicSystem());
+        //final Http http = Http.get(system.classicSystem());
         final Uri targetUri = Uri.create("https://restpro00a.acc.gsi.de/lsa/client/v2/resident_patterns_change");
 
     }
 
-    ActorSystem<Trim.TheTrim> system = ActorSystem.create(Trim.create(), "LSA-Trims");
-    Materializer materializer = Materializer.createMaterializer(system.classicSystem());
-    java.util.function.Function<HttpRequest, CompletionStage<HttpResponse>> send = (request) -> http.singleRequest(request);
-    Source<ServerSentEvent, NotUsed> eventSource = EventSource.create(targetUri, send, Optional.empty(), materializer);
+    //ActorSystem<Trim.TheTrim> system = ActorSystem.create(Trim.create(), "LSA-Trims");
+    //Materializer materializer = Materializer.createMaterializer(system.classicSystem());
+    //java.util.function.Function<HttpRequest, CompletionStage<HttpResponse>> send = (request) -> http.singleRequest(request);
+    //Source<ServerSentEvent, NotUsed> eventSource = EventSource.create(targetUri, send, Optional.empty(), materializer);
 
-    int elements = 1;
-    Duration per = Duration.ofMillis(500);
-    int maximumBurst = 1;
+    //int elements = 1;
+    //Duration per = Duration.ofMillis(500);
+    //int maximumBurst = 1;
 
-        eventSource.throttle(elements, per, maximumBurst, ThrottleMode.shaping())
-            .take(5)
-                .runForeach(e -> System.out.println(e), materializer);
+    //    eventSource.throttle(elements, per, maximumBurst, ThrottleMode.shaping())
+    //        .take(5)
+    //            .runForeach(e -> System.out.println(e), materializer);
     @Override
     public GraphStageLogic createLogic(final Attributes inheritedAttributes) throws Exception {
         return new GraphStageLogicWithLogging(shape()) {

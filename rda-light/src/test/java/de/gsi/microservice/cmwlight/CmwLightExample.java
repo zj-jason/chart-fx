@@ -5,7 +5,10 @@ import de.gsi.serializer.spi.CmwLightSerialiser;
 import de.gsi.serializer.spi.FastByteBuffer;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import static java.nio.file.Paths.get;
 
@@ -16,7 +19,43 @@ public class CmwLightExample {
     private final static String SELECTOR = "FAIR.SELECTOR.ALL";
 
     public static void main(String[] args) throws CmwLightClient.RdaLightException, IOException, DirectoryLightClient.DirectoryClientException {
-        subscribeSnoopFromDigitizer();
+        //subscribeSnoopFromDigitizer();
+        subscribeAcqFromDigitizer();
+    }
+
+    public static void subscribeAcqFromDigitizer() throws CmwLightClient.RdaLightException, DirectoryLightClient.DirectoryClientException, IOException {
+        final DirectoryLightClient directoryClient = new DirectoryLightClient(CMW_NAMESERVER);
+        DirectoryLightClient.Device device = directoryClient.getDeviceInfo(Collections.singletonList(DEVICE)).get(0);
+        System.out.println(device);
+        final String address = device.servers.stream().findFirst().orElseThrow().get("Address:");
+        System.out.println("connect client to " + address);
+        final CmwLightClient client = new CmwLightClient(address);
+        client.connect();
+        System.out.println("Client connected");
+
+        System.out.println("starting subscription");
+        Map<String, Object> filters = new HashMap<>();
+        filters.put("acquisitionModeFilter", 4); // 4 = Triggered Acquisition Mode
+        filters.put("channelNameFilter", "GS02P:SumY:Triggered@28MHz");
+        client.subscribe(DEVICE, "AcquisitionDAQ", SELECTOR, filters);
+
+        int i = 0;
+        while (i < 15) {
+            final CmwLightClient.Reply result = client.receiveData();
+            if (result instanceof CmwLightClient.DataReply) {
+                final byte[] bytes = ((CmwLightClient.DataReply) result).dataBody.getData();
+                final IoClassSerialiser classSerialiser = new IoClassSerialiser(FastByteBuffer.wrap(bytes), CmwLightSerialiser.class);
+                final AcquisitionDAQ acq = classSerialiser.deserialiseObject(AcquisitionDAQ.class);
+                System.out.println("body: " + acq);
+                i++;
+                client.sendHeartBeat();
+            } else {
+                System.out.print(".");
+            }
+        }
+
+        System.out.println("unsubscribe");
+        client.unsubscribe(DEVICE, PROPERTY, SELECTOR);
     }
 
     public static void subscribeSnoopFromDigitizer() throws CmwLightClient.RdaLightException, DirectoryLightClient.DirectoryClientException, IOException {
@@ -135,6 +174,61 @@ public class CmwLightExample {
         // just return all data
         while (true) {
             client.receiveData();
+        }
+    }
+
+    private static class AcquisitionDAQ {
+        public String refTriggerName;
+        public long refTriggerStamp;
+        public float[] channelTimeSinceRefTrigger;
+        public float channelUserDelay;
+        public float channelActualDelay;
+        public String channelName;
+        public float[] channelValue;
+        public float[] channelError;
+        public String channelUnit;
+        public int status;
+        public float channelRangeMin;
+        public float channelRangeMax;
+        public float temperature;
+        public int processIndex;
+        public int sequenceIndex;
+        public int chainIndex;
+        public int eventNumber;
+        public int timingGroupId;
+        public long acquisitionStamp;
+        public long eventStamp;
+        public long processStartStamp;
+        public long sequenceStartStamp;
+        public long chainStartStamp;
+
+        @Override
+        public String toString() {
+            return "AcquisitionDAQ{" +
+                    "refTriggerName='" + refTriggerName + '\'' +
+                    ", refTriggerStamp=" + refTriggerStamp +
+                    ", channelTimeSinceRefTrigger(n=" + channelTimeSinceRefTrigger.length + ")=" + Arrays.toString(Arrays.copyOfRange(channelTimeSinceRefTrigger,0,3)) +
+                    ", channelUserDelay=" + channelUserDelay +
+                    ", channelActualDelay=" + channelActualDelay +
+                    ", channelName='" + channelName + '\'' +
+                    ", channelValue(n=" + channelValue.length + ")=" + Arrays.toString(Arrays.copyOfRange(channelValue,0,3)) +
+                    ", channelError(n=" + channelError.length + ")=" + Arrays.toString(Arrays.copyOfRange(channelError,0,3)) +
+                    ", channelUnit='" + channelUnit + '\'' +
+                    ", status=" + status +
+                    ", channelRangeMin=" + channelRangeMin +
+                    ", channelRangeMax=" + channelRangeMax +
+                    ", temperature=" + temperature +
+                    ", processIndex=" + processIndex +
+                    ", sequenceIndex=" + sequenceIndex +
+                    ", chainIndex=" + chainIndex +
+                    ", eventNumber=" + eventNumber +
+                    ", timingGroupId=" + timingGroupId +
+                    ", acquisitionStamp=" + acquisitionStamp +
+                    ", eventStamp=" + eventStamp +
+                    ", processStartStamp=" + processStartStamp +
+                    ", sequenceStartStamp=" + sequenceStartStamp +
+                    ", chainStartStamp=" + chainStartStamp +
+                    '}';
         }
     }
 

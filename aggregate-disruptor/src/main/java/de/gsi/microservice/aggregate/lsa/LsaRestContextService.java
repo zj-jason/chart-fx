@@ -1,4 +1,4 @@
-package de.gsi.microservice.cmwlight;
+package de.gsi.microservice.aggregate.lsa;
 
 import com.squareup.moshi.*;
 import com.squareup.moshi.adapters.Rfc3339DateJsonAdapter;
@@ -16,12 +16,14 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.Type;
+import java.time.Duration;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -40,21 +42,21 @@ public class LsaRestContextService {
     private static final int MAX_BACK_OFF = 10_000; // maximum time between SSE connection retries
 
     private final Map<String, LsaPattern> knownContexts = new TreeMap<>(); // store all contexts known by the service
-    private final Map<String, LsaSettingSubscription<?>> settingSubscriptons = new TreeMap<>(); // store all setting subscriptions
-    private static final char multiplexingType = 'C';
+    private final Map<String, LsaSettingSubscription<?>> settingSubscriptions = new TreeMap<>(); // store all setting subscriptions
+    private final char multiplexingType = 'C';
+
+    private Consumer<ResidentPatternUpdate> updateCallback;
 
     private final OkHttpClient httpClient;
     private int backOff = 0; // back of time in ms
     private final Moshi moshi; // json serializer
-    private final boolean printUpdates;
     ScheduledExecutorService scheduledExecutor = new ScheduledThreadPoolExecutor(4);
     // private boolean performDrive; // whether to perform the drive after performing a trim
     // private final boolean persist = false; // whether to persist LSA changes
     // private SettingPartEnum settingPart = SettingPartEnum.TARGET;
 
-    public LsaRestContextService(final boolean printUpdates) {
-        this.printUpdates = printUpdates;
-        httpClient = new OkHttpClient.Builder().retryOnConnectionFailure(true).readTimeout(0, TimeUnit.SECONDS).build();
+    public LsaRestContextService() {
+        httpClient = new OkHttpClient.Builder().retryOnConnectionFailure(true).readTimeout(Duration.ZERO).build();
         moshi = new Moshi.Builder()//
                 .add(Date.class, new Rfc3339DateJsonAdapter()) // adapter to parse dates from the json adapter
                 .add(FairSelector.class, new JsonAdapter<FairSelector>() {
@@ -77,11 +79,6 @@ public class LsaRestContextService {
                         }
                     }
                 }).build();
-        reconnect();
-    }
-
-    public LsaRestContextService() {
-        this(false);
     }
 
     /**
@@ -119,6 +116,7 @@ public class LsaRestContextService {
                     return;
                 }
                 if (pattern.chains == null) {
+                    return;
                 }
                 pattern.chains.forEach((chainName, chain) -> {
                     if (chain.processes != null) {
@@ -144,17 +142,15 @@ public class LsaRestContextService {
                     chain.lsaChainId = chainName.hashCode(); // hack because we cannot access the real chain id
                 });
                 pattern.resident = true;
-                for (LsaSettingSubscription<?> sub : settingSubscriptons.values()) {
+                for (LsaSettingSubscription<?> sub : settingSubscriptions.values()) {
                     Object oldValue = sub.value;
                     getSettingDouble(sub.setting, sub.context, sub.process);
                     // notify subscriptions
                     if (!oldValue.equals(sub.value)) {
                         // sub.callback.accept(oldValue, (Object) sub.value);
-                        LOGGER.atDebug().addArgument(sub).addArgument(oldValue).addArgument(sub.value)
-                                .log("Subscription {} changed: {} -> {}");
+                        LOGGER.atDebug().addArgument(sub).addArgument(oldValue).addArgument(sub.value) .log("Subscription {} changed: {} -> {}");
                     } else {
-                        LOGGER.atDebug().addArgument(sub).addArgument(oldValue)
-                                .log("Subscription {} did not change: {}");
+                        LOGGER.atDebug().addArgument(sub).addArgument(oldValue) .log("Subscription {} did not change: {}");
                     }
                 }
                 // update known Context
@@ -270,7 +266,7 @@ public class LsaRestContextService {
         Optional<Entry<String, LsaPattern>> result = knownContexts.entrySet().stream()
                 .filter(e -> e.getValue().chains.values().stream().findFirst().get().chainId == chainId).findAny();
         if (result.isPresent()) {
-            return result.get().getValue().chains.values().stream().findAny().map(e -> e.lsaChainId).orElse(0l);
+            return result.get().getValue().chains.values().stream().findAny().map(e -> e.lsaChainId).orElse(0L);
         }
         return 0;
     }
@@ -320,15 +316,14 @@ public class LsaRestContextService {
      * Connects to the LSA REST/SSE endpoint and reconnects automatically if the connection is terminated.
      * Uses an exponential back-off strategy for cases where the endpoint is temporarily unavailable.
      */
-    private void reconnect() {
+    public void reconnect() {
         JsonAdapter<ResidentPatternUpdate> trimUpdatesAdapter = moshi.adapter(ResidentPatternUpdate.class);
         Request sseRequest = new Request.Builder().url(LSA_REST_URL + LSA_REST_SSE_ENDPOINT)
                 .addHeader("Accept", "text/event-stream").build();
         EventSources.createFactory(httpClient).newEventSource(sseRequest, new EventSourceListener() {
             @Override
             public void onClosed(EventSource eventSource) {
-                if (printUpdates)
-                    LOGGER.atDebug().log("Closed SSE Subscription");
+                LOGGER.atDebug().log("Closed SSE Subscription");
                 backOff(LsaRestContextService.this::reconnect);
             }
 
@@ -336,11 +331,12 @@ public class LsaRestContextService {
             public void onEvent(EventSource eventSource, String id, String type, String data) {
                 try {
                     ResidentPatternUpdate resPatterns = trimUpdatesAdapter.fromJson(data);
-                    if (printUpdates)
-                        LOGGER.atDebug().addArgument(resPatterns.residentPatterns.size())
-                                .log("Received SSE Event, number of resident patterns: {}");
+                    LOGGER.atTrace().addArgument(resPatterns.residentPatterns.size()).log("Received SSE Event, number of resident patterns: {}");
                     updatePatterns(resPatterns.residentPatterns);
                     purgeOldPatterns(resPatterns.residentPatterns.keySet());
+                    if (updateCallback != null) {
+                        updateCallback.accept(resPatterns);
+                    }
                 } catch (IOException e) {
                     LOGGER.atError().log("Error parsing json");
                 }
@@ -348,16 +344,14 @@ public class LsaRestContextService {
 
             @Override
             public void onFailure(EventSource eventSource, Throwable t, Response response) {
-                if (printUpdates)
-                    LOGGER.atDebug().log("SSE Subscription Failed: " + t);
+                LOGGER.atError().log("SSE Subscription Failed: " + t);
                 backOff(LsaRestContextService.this::reconnect);
             }
 
             @Override
             public void onOpen(EventSource eventSource, Response response) {
                 backOff = 0; // reset exponential back-off
-                if (printUpdates)
-                    LOGGER.atDebug().log("Opened SSE Subscription");
+                LOGGER.atDebug().log("Opened SSE Subscription");
             }
         });
     }
@@ -367,14 +361,17 @@ public class LsaRestContextService {
         subscription.callback = callback;
         subscription.value = null;
         // initialize setting
-        for (String context : knownContexts.keySet()) {
-            try {
-                getSettingDouble(setting, context, process);
-            } catch (IllegalArgumentException e) {
-                LOGGER.atDebug().addArgument(e.getMessage()).log("could not get setting: {}");
+        for (LsaPattern pattern: knownContexts.values()) {
+            for (LsaChainContext chain : pattern.chains.values()) {
+                String selector = new FairSelector(chain.chainId, -1, -1, -1).toString();
+                try {
+                    getSettingDouble(setting, selector, process);
+                } catch (IllegalArgumentException e) {
+                    LOGGER.atDebug().addArgument(e.getMessage()).log("could not get setting: {}");
+                }
             }
         }
-        settingSubscriptons.put(setting + '#' + process, subscription);
+        settingSubscriptions.put(setting + '#' + process, subscription);
     }
 
     /**
@@ -394,14 +391,18 @@ public class LsaRestContextService {
         }
     }
 
+    public void setUpdateCallback(final Consumer<ResidentPatternUpdate> updateCallback) {
+        this.updateCallback = updateCallback;
+    }
+
     // POJOs for the LSA updates SSE endpoint
-    static class ResidentPatternUpdate implements Serializable{
+    public static class ResidentPatternUpdate implements Serializable{
         private static final long serialVersionUID = 1L;
         @Json(name = "RESIDENT_PATTERNS")
         public Map<String, TrimUpdate> residentPatterns;
     }
 
-    static class TrimUpdate implements Serializable{
+    public static class TrimUpdate implements Serializable{
         private static final long serialVersionUID = 1L;
         @Json(name = "LAST_TRIMMED")
         public Date lastTrimmed;
@@ -511,52 +512,5 @@ public class LsaRestContextService {
         public String process;
         public String context;
         public T value; // last updated value per context
-    }
-
-    /**
-     * Main method to test LSA REST access
-     * @param args command line arguments
-     */
-    public static void main(String[] args) {
-        // start new context service. Retrieves all patterns and sets up a SSE subscription on changes
-        LsaRestContextService lsaMiddleTierAdapter = new LsaRestContextService(true);
-        try {
-            Thread.sleep(2000); // wait for contexts to be available
-        } catch (InterruptedException e) {
-            LOGGER.atError().setCause(e).log("Error sleeping");
-            Thread.currentThread().interrupt(); // Restore interrupted state...
-        }
-
-        // test subscription, will print every change to the setting
-        lsaMiddleTierAdapter.subscribeToSetting("SIS18BI/FREV_INJ", (oldVal, newVal) -> LOGGER.atInfo()
-                        .addArgument(oldVal).addArgument(newVal).log("FRev Changed from {} to {}"),
-                ".SIS18_RING.RING_INJECTION.1");
-
-        LOGGER.atInfo().addArgument(lsaMiddleTierAdapter.getAvailableContexts()).log("Available Contexts: \n {}");
-
-        // directly read  double setting
-        final double settingVal = lsaMiddleTierAdapter.getSettingDouble("SIS18BI/FREV_INJ",
-                new FairSelector(3, -1, -1, -1).toString(), ".SIS18_RING.RING_INJECTION.1");
-        LOGGER.atInfo().addArgument(settingVal).log("Read injection frequency: {} Hz");
-        // directly read  int setting
-        final int q = lsaMiddleTierAdapter.getSettingInt("SIS18BEAM/Q", new FairSelector(3, -1, -1, -1).toString(),
-                ".SIS18_RING.RING_INJECTION.1");
-        LOGGER.atInfo().addArgument(q).log("Read charge state: {} e");
-        // read function setting
-        final LsaSettingFunction settingValFunction = lsaMiddleTierAdapter.getSettingFunction("SIS18BEAM/ETA",
-                new FairSelector(3, -1, -1, -1).toString(), ".SIS18_RING.RING_INJECTION.1");
-        LOGGER.atInfo().addArgument(settingValFunction).log("Read ETA function: {}");
-        // read function[] setting
-        final LsaSettingFunction[] settingValFunctionArray = lsaMiddleTierAdapter.getSettingFunctionArray("SIS18RF/URFRING",
-                new FairSelector(3, -1, -1, -1).toString(), ".SIS18_RING.RING_INJECTION.1");
-        LOGGER.atInfo().addArgument(settingValFunctionArray).log("Read URFRING functions: {}");
-        // read boolean[][] setting
-        final int[][] settingValBooleanArray2D = lsaMiddleTierAdapter.getSettingIntArray2D("SIS18RF/CAVITY2HARMONIC",
-                new FairSelector(3, -1, -1, -1).toString(), ".SIS18_RING.RING_INJECTION.1");
-        LOGGER.atInfo().addArgument(settingValBooleanArray2D).log("Read Cavity to harmonics array: {}");
-        // read String[] setting
-        final String[] settingValStringArray = lsaMiddleTierAdapter.getSettingStringArray("SIS18RF/CAVITY_NAMES",
-                new FairSelector(3, -1, -1, -1).toString(), ".SIS18_RING.RING_INJECTION.1");
-        LOGGER.atInfo().addArgument(settingValStringArray).log("Read Cavity names: {}");
     }
 }

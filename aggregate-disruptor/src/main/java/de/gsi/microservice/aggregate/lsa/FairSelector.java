@@ -1,4 +1,4 @@
-package de.gsi.microservice.cmwlight;
+package de.gsi.microservice.aggregate.lsa;
 
 import java.io.Serializable;
 import java.util.Objects;
