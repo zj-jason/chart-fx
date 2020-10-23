@@ -42,8 +42,8 @@ public class CmwLightExample {
         int i = 0;
         while (i < 15) {
             final CmwLightClient.Reply result = client.receiveData();
-            if (result instanceof CmwLightClient.DataReply) {
-                final byte[] bytes = ((CmwLightClient.DataReply) result).dataBody.getData();
+            if (result instanceof CmwLightClient.SubscriptionUpdate) {
+                final byte[] bytes = ((CmwLightClient.SubscriptionUpdate) result).bodyData.getData();
                 final IoClassSerialiser classSerialiser = new IoClassSerialiser(FastByteBuffer.wrap(bytes), CmwLightSerialiser.class);
                 final AcquisitionDAQ acq = classSerialiser.deserialiseObject(AcquisitionDAQ.class);
                 System.out.println("body: " + acq);
@@ -74,8 +74,8 @@ public class CmwLightExample {
         int i = 0;
         while (i < 15) {
             final CmwLightClient.Reply result = client.receiveData();
-            if (result instanceof CmwLightClient.DataReply) {
-                final byte[] bytes = ((CmwLightClient.DataReply) result).dataBody.getData();
+            if (result instanceof CmwLightClient.SubscriptionUpdate) {
+                final byte[] bytes = ((CmwLightClient.SubscriptionUpdate) result).bodyData.getData();
                 final IoClassSerialiser classSerialiser = new IoClassSerialiser(FastByteBuffer.wrap(bytes), CmwLightSerialiser.class);
                 final SnoopAcquisition snoopAcq = classSerialiser.deserialiseObject(SnoopAcquisition.class);
                 System.out.println("body: " + snoopAcq);
@@ -90,8 +90,8 @@ public class CmwLightExample {
         client.unsubscribe(DEVICE, PROPERTY, SELECTOR);
         while (i < 25) {
             final CmwLightClient.Reply result = client.receiveData();
-            if (result instanceof CmwLightClient.DataReply) {
-                final byte[] bytes = ((CmwLightClient.DataReply) result).dataBody.getData();
+            if (result instanceof CmwLightClient.SubscriptionUpdate) {
+                final byte[] bytes = ((CmwLightClient.SubscriptionUpdate) result).bodyData.getData();
                 final IoClassSerialiser classSerialiser = new IoClassSerialiser(FastByteBuffer.wrap(bytes), CmwLightSerialiser.class);
                 final SnoopAcquisition snoopAcq = classSerialiser.deserialiseObject(SnoopAcquisition.class);
                 System.out.println("body: " + snoopAcq);
@@ -113,7 +113,7 @@ public class CmwLightExample {
         final long start = System.currentTimeMillis();
         for (int i = 0 ; i < nExec; i++) {
             client.get("testdevice", "testproperty", "FAIR.SELECTOR.ALL");
-            while (client.receiveData() instanceof CmwLightClient.DataReply) {
+            while (client.receiveData() instanceof CmwLightClient.SubscriptionUpdate) {
                 // this loop is intentionally left blank
             }
         }
@@ -159,13 +159,13 @@ public class CmwLightExample {
 
         client.get("testdevice", "unknownProp", "FAIR.SELECTOR.ALL");
         // return reply to data
-        while (client.receiveData() instanceof CmwLightClient.ExceptionReply) {
+        while (client.receiveData() instanceof CmwLightClient.GetException) {
             // this loop is intentionally left blank
         }
         System.out.println("Received GET Exception");
 
         get("testdevice", "testproperty", "FAIR.SELECTOR.ALL");
-        while (client.receiveData() instanceof CmwLightClient.DataReply) {
+        while (client.receiveData() instanceof CmwLightClient.GetReply) {
             // this loop is intentionally left blank
         }
         System.out.println("Received GET Reply");

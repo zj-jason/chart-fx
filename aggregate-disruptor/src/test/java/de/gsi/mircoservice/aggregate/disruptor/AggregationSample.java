@@ -43,14 +43,14 @@ public class AggregationSample {
         aggregator.start();
 
         // digitizer snoop events
-        aggregator.addCmwLightSubscription(DIGITIZER, SNOOP_PROP, SELECTOR_ALL, SnoopAcquisition.class);
+        aggregator.addCmwLightSubscription(DIGITIZER, SNOOP_PROP+"nonexistent", SELECTOR_ALL, SnoopAcquisition.class);
 
         // digitizer acquisition
-        aggregator.addCmwLightSubscription(DIGITIZER, DAQ_PROP, SELECTOR_ALL,
-                Map.of("acquisitionModeFilter", ACQUISITION_MODE_TRIGGERED, "channelNameFilter", DIGITIZER_CHANNEL), AcquisitionDAQ.class);
+        //aggregator.addCmwLightSubscription(DIGITIZER, DAQ_PROP, SELECTOR_ALL,
+        //        Map.of("acquisitionModeFilter", ACQUISITION_MODE_TRIGGERED, "channelNameFilter", DIGITIZER_CHANNEL), AcquisitionDAQ.class);
 
         // acct acquisition
-        aggregator.addCmwLightSubscription(ACCT_SIS, ACQUISITION_PROP, SELECTOR_ALL, Map.of("requestPartialData", false), AcctAcquisition.class);
+        //aggregator.addCmwLightSubscription(ACCT_SIS, ACQUISITION_PROP, SELECTOR_ALL, Map.of("requestPartialData", false), AcctAcquisition.class);
 
         // LsaTrimsAndRescheduling updates
         // aggregator.startLsaUpdateSubscription();

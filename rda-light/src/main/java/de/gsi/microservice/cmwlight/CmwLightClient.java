@@ -7,12 +7,9 @@ import de.gsi.serializer.spi.CmwLightSerialiser;
 import de.gsi.serializer.spi.FastByteBuffer;
 import de.gsi.serializer.spi.WireDataFieldDescription;
 import org.zeromq.*;
-import zmq.util.Wire;
 
-import java.lang.reflect.Type;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -90,7 +87,7 @@ public class CmwLightClient {
     // UpdateType
     public static final byte UT_NORMAL = (byte) 0;
     public static final byte UT_FIRST_UPDATE = (byte) 1; // Initial update sent when the subscription is created.
-    public static final byte UT_IMMEDIATE_UPDATE = (byte) 2; //Update sent after the value has been modified by a set call.
+    public static final byte UT_IMMEDIATE_UPDATE = (byte) 2; // Update sent after the value has been modified by a set call.
 
     public CmwLightClient(String address) {
         controlChannel = context.createSocket(SocketType.DEALER);
@@ -143,20 +140,45 @@ public class CmwLightClient {
         final byte[] header = data.pollFirst().getData();
         serialiser.setDataBuffer(FastByteBuffer.wrap(header));
         final FieldDescription headerMap;
+        byte reqType = -1;
+        long id = -1;
+        String deviceName = "";
+        WireDataFieldDescription options = null;
+        byte updateType = -1;
+        String sessionId = "";
+        String propName = "";
+
         try {
             headerMap = serialiser.parseWireFormat().getChildren().get(0);
+            for (FieldDescription field : headerMap.getChildren()) {
+                if (field.getFieldName().equals(REQ_TYPE_TAG) && field.getType() == byte.class) {
+                    reqType = (byte) ((WireDataFieldDescription) field).data();
+                } else if (field.getFieldName().equals(ID_TAG) && field.getType() == long.class) {
+                    id = (long) ((WireDataFieldDescription) field).data();
+                } else if (field.getFieldName().equals(DEVICE_NAME_TAG) && field.getType() == String.class) {
+                    deviceName = (String) ((WireDataFieldDescription) field).data();
+                } else if (field.getFieldName().equals(OPTIONS_TAG)) {
+                    options = (WireDataFieldDescription) field;
+                } else if (field.getFieldName().equals(UPDATE_TYPE_TAG) && field.getType() == byte.class) {
+                    updateType= (byte) ((WireDataFieldDescription) field).data();
+                } else if (field.getFieldName().equals(SESSION_ID_TAG) && field.getType() == String.class) {
+                    sessionId = (String) ((WireDataFieldDescription) field).data();
+                } else if (field.getFieldName().equals(PROPERTY_NAME_TAG) && field.getType() == String.class) {
+                    propName = (String) ((WireDataFieldDescription) field).data();
+                } else {
+                    throw new RdaLightException("Unknown Cmw Header field: " + field.getFieldName());
+                }
+            }
         } catch (IllegalStateException e) {
             throw new RdaLightException("unparsable header: " + Arrays.toString(header) + "(" + new String(header) +")");
         }
-        final FieldDescription reqTypeField = headerMap.findChildField(REQ_TYPE_TAG); // byte
-        assertType(reqTypeField, byte.class);
-        final byte reqType = (byte) ((WireDataFieldDescription) reqTypeField).data();
         switch (reqType) {
             case RT_SESSION_CONFIRM:
                 System.out.println("received session confirm");
+                // update session state
                 return null;
             case RT_EVENT:
-                System.out.println("received received event");
+                System.out.println("received event");
                 return null;
             case RT_REPLY:
                 System.out.println("received reply");
@@ -170,100 +192,112 @@ public class CmwLightClient {
                 return null;
             case RT_SUBSCRIBE_EXCEPTION:
                 System.out.println("received subscription exception");
-                return null;
+                if (descriptor.length != 2 || descriptor[1] != MT_BODY_EXCEPTION) {
+                    throw new RdaLightException("Notification update does not contain the proper data");
+                }
+                return createSubscriptionExceptionReply(id, data.pollFirst());
             case RT_NOTIFICATION_EXC:
                 System.out.println("received notification exc");
                 return null;
             case RT_NOTIFICATION_DATA:
-                final FieldDescription idField = headerMap.findChildField(ID_TAG); //long
-                assertType(idField, long.class);
-                final long id = (long) ((WireDataFieldDescription) idField).data();
-                final FieldDescription deviceNameField = headerMap.findChildField(DEVICE_NAME_TAG); // string
-                assertType(deviceNameField, String.class);
-                final String devName = (String) ((WireDataFieldDescription) deviceNameField).data();
-                assert devName.length() == 0 ;
-                final FieldDescription optionsField = headerMap.findChildField(OPTIONS_TAG);
-                long notificationId = -1;
-                if (optionsField != null) {
-                    final FieldDescription notificationIdField = optionsField.findChildField(NOTIFICATION_ID_TAG); //long
-                    assertType(notificationIdField, long.class);
-                    notificationId = (long) ((WireDataFieldDescription) notificationIdField).data();
-                }
-                final FieldDescription updateTypeField = headerMap.findChildField(UPDATE_TYPE_TAG); // byte
-                assertType(updateTypeField, byte.class);
-                final byte updateType = (byte) ((WireDataFieldDescription) updateTypeField).data();
-                final FieldDescription sessionIdField = headerMap.findChildField(SESSION_ID_TAG); //
-                assertType(sessionIdField, String.class);
-                final String sessionId = (String) ((WireDataFieldDescription) sessionIdField).data();
-                assert sessionId.length() == 0;
-                final FieldDescription propNameField = headerMap.findChildField(PROPERTY_NAME_TAG);
-                assertType(propNameField, String.class);
-                final String propName = (String) ((WireDataFieldDescription) propNameField).data();
-                assert propName.length() == 0;
                 if (descriptor.length != 3 || descriptor[1] != MT_BODY || descriptor[2] != MT_BODY_DATA_CONTEXT) {
                     throw new RdaLightException("Notification update does not contain the proper data");
                 }
-                return new CmwLightClient.SubscriptionUpdate(id, updateType, notificationId, data.pollFirst(), data.pollFirst());
+                long notificationId = -1;
+                if (options != null) {
+                    final FieldDescription notificationIdField = options.findChildField(NOTIFICATION_ID_TAG); //long
+                    notificationId = (long) ((WireDataFieldDescription) notificationIdField).data();
+                }
+                return createSubscriptionUpdateReply(id, updateType, notificationId, data.pollFirst(), data.pollFirst());
             default:
-                System.out.println("received unknown request type: " + reqType);
-                return null;
+                throw new RdaLightException("received unknown request type: " + reqType);
         }
-
-        // Reply result;
-        // if (Arrays.equals(descriptor, new byte[] {MT_HEADER})) {
-        //     result = new HeaderReply(); // this should probably just set some subscription status
-        // } else if (Arrays.equals(descriptor , new byte[] {MT_HEADER, MT_BODY_EXCEPTION})) {
-        //         result = new ExceptionReply();
-        // } else if (!Arrays.equals(descriptor, new byte[] {MT_HEADER, MT_BODY, MT_BODY_DATA_CONTEXT})) {
-        //     throw new RdaLightException("expected reply message, but got: "+ Arrays.toString(descriptor) +  " - " + Arrays.toString(data.getLast().getData()));
-        // } else {
-        //     result = new DataReply();
-        // }
-        // for (final byte desc : descriptor) {
-        //     switch (desc) {
-        //         case MT_HEADER:
-        //             result.header = data.pollFirst();
-        //             break;
-        //         case MT_BODY:
-        //             ((DataReply) result).dataBody = data.pollFirst();
-        //             break;
-        //         case MT_BODY_DATA_CONTEXT:
-        //             ((DataReply) result).dataContext= data.pollFirst();
-        //             break;
-        //         case MT_BODY_REQUEST_CONTEXT:
-        //             throw new RdaLightException("Unexpected body request context frame"); // we should never receive this
-        //         case MT_BODY_EXCEPTION:
-        //             ((ExceptionReply) result).exceptionBody = data.pollFirst();
-        //             break;
-        //         default:
-        //             throw new RdaLightException("invalid message type (" + desc + "): "+ new String(data.pollFirst().getData()));
-        //     }
-        // }
-        // return result;
     }
 
-    private void assertType(final FieldDescription field, final Type type) {
-        if (field.getType() != type) {
-            throw new IllegalStateException("idField has wrong type");
+    private Reply createSubscriptionExceptionReply(final long id, final ZFrame pollFirst) throws RdaLightException {
+        final SubscriptionExceptionReply reply = new SubscriptionExceptionReply();
+        serialiser.setDataBuffer(FastByteBuffer.wrap(pollFirst.getData()));
+        final FieldDescription exceptionFields = serialiser.parseWireFormat().getChildren().get(0);
+        for (FieldDescription field : exceptionFields.getChildren()) {
+            if (field.getFieldName().equals("ContextAcqStamp") && field.getType() == long.class) {
+                reply.contextAcqStamp = (long) ((WireDataFieldDescription) field).data();
+            } else if (field.getFieldName().equals("ContextCycleStamp") && field.getType() == long.class) {
+                reply.contextCycleStamp= (long) ((WireDataFieldDescription) field).data();
+            } else if (field.getFieldName().equals("Message") && field.getType() == String.class) {
+                reply.message = (String) ((WireDataFieldDescription) field).data();
+            } else if (field.getFieldName().equals("Type") && field.getType() == byte.class) {
+                reply.type = (byte) ((WireDataFieldDescription) field).data();
+            } else {
+                throw new RdaLightException("Unsupported field in exception body: " + field.getFieldName());
+            }
         }
+        return reply;
+    }
+
+    private Reply createSubscriptionUpdateReply(final long id, final byte updateType, final long notificationId, final ZFrame bodyData, final ZFrame contextData) throws RdaLightException {
+        final SubscriptionUpdate reply = new SubscriptionUpdate();
+        reply.id = id;
+        reply.updateType = updateType;
+        reply.notificationId = notificationId;
+        reply.bodyData = bodyData;
+
+        serialiser.setDataBuffer(FastByteBuffer.wrap(contextData.getData()));
+        final FieldDescription contextMap;
+        try {
+            contextMap = serialiser.parseWireFormat().getChildren().get(0);
+        } catch (IllegalStateException e) {
+            final byte[] contextBytes = serialiser.getDataBuffer().elements();
+            throw new RdaLightException("unparsable header: " + Arrays.toString(contextBytes) + "(" + new String(contextBytes) +")");
+        }
+        for (FieldDescription field : contextMap.getChildren()) {
+            if (field.getFieldName().equals(CYCLE_NAME_TAG) && field.getType() == String.class) {
+                reply.cycleName = (String) ((WireDataFieldDescription) field).data();
+            } else if (field.getFieldName().equals(ACQ_STAMP_TAG) && field.getType() == long.class) {
+                reply.acqStamp = (long) ((WireDataFieldDescription) field).data();
+            } else if (field.getFieldName().equals(CYCLE_STAMP_TAG) && field.getType() == long.class) {
+                reply.cycleStamp = (long) ((WireDataFieldDescription) field).data();
+            } else if (field.getFieldName().equals(DATA_TAG)) {
+                for (FieldDescription dataField : field.getChildren()) {
+                    if (dataField.getFieldName().equals("acqStamp") && dataField.getType() == long.class) {
+                        reply.acqStamp2 = (long) ((WireDataFieldDescription) dataField).data();
+                    } else if (dataField.getFieldName().equals("cycleName") && dataField.getType() == String.class) {
+                        reply.cycleName2 = (String) ((WireDataFieldDescription) dataField).data();
+                    } else if (dataField.getFieldName().equals("cycleStamp") && dataField.getType() == long.class) {
+                        reply.cycleStamp2 = (long) ((WireDataFieldDescription) dataField).data();
+                    } else if (dataField.getFieldName().equals("type") && dataField.getType() == int.class) {
+                        reply.type = (int) ((WireDataFieldDescription) dataField).data();
+                    } else if (dataField.getFieldName().equals("version") && dataField.getType() == int.class) {
+                        reply.version = (int) ((WireDataFieldDescription) dataField).data();
+                    } else {
+                        throw new UnsupportedOperationException("Unknown data field: " + field.getFieldName());
+                    }
+                }
+            } else {
+                throw new UnsupportedOperationException("Unknown field: " + field.getFieldName());
+            }
+        }
+        assert reply.acqStamp == reply.acqStamp2;
+        assert reply.cycleName.equals(reply.cycleName2);
+        assert reply.cycleStamp == reply.cycleStamp2;
+        return reply;
     }
 
     public void sendHeartBeat() {
         controlChannel.send(new byte[] {CLIENT_HB});
     }
 
-    public void subscribe(final String testdevice, final String testprop, final String selector) {
-        subscribe(testdevice, testprop, selector);
+    public void subscribe(final String device, final String property, final String selector) throws RdaLightException {
+        subscribe(device, property, selector, null);
     }
 
-    public void subscribe(final String testdevice, final String testprop, final String selector, final Map<String, Object> filters) throws RdaLightException {
+    public void subscribe(final String device, final String property, final String selector, final Map<String, Object> filters) throws RdaLightException {
         controlChannel.send(new byte[] {CLIENT_REQ}, ZMQ.SNDMORE);
         final CmwLightSerialiser serialiser = new CmwLightSerialiser(new FastByteBuffer(1024));
         serialiser.putHeaderInfo();
         serialiser.put(REQ_TYPE_TAG, RT_SUBSCRIBE);
         serialiser.put(ID_TAG, 1L); // todo: id
-        serialiser.put(DEVICE_NAME_TAG, testdevice);
-        serialiser.put(PROPERTY_NAME_TAG, testprop);
+        serialiser.put(DEVICE_NAME_TAG, device);
+        serialiser.put(PROPERTY_NAME_TAG, property);
         serialiser.put(UPDATE_TYPE_TAG, UT_NORMAL);
         serialiser.put(SESSION_ID_TAG,"asdf"); // todo session id
         // StartMarker marks start of Data Object
@@ -290,7 +324,7 @@ public class CmwLightClient {
                 } else if (entry.getValue() instanceof Boolean) {
                     serialiser.put(entry.getKey(), (Boolean) entry.getValue());
                 } else {
-                    throw new CmwLightClient.RdaLightException("unsupported filter type: " + entry.getValue().getClass().getCanonicalName());
+                    throw new RdaLightException("unsupported filter type: " + entry.getValue().getClass().getCanonicalName());
                 }
             }
             serialiser.putEndMarker(filterFieldMarker);
@@ -301,14 +335,14 @@ public class CmwLightClient {
         controlChannel.send(new byte[] {MT_HEADER, MT_BODY_REQUEST_CONTEXT});
     }
 
-    public void unsubscribe(final String testdevice, final String testprop, final String selector) {
+    public void unsubscribe(final String device, final String property, final String selector) {
         controlChannel.send(new byte[] {CLIENT_REQ}, ZMQ.SNDMORE);
         final CmwLightSerialiser serialiser = new CmwLightSerialiser(new FastByteBuffer(1024));
         serialiser.putHeaderInfo();
         serialiser.put(REQ_TYPE_TAG, RT_UNSUBSCRIBE);
         serialiser.put(ID_TAG, 1L); // todo: id
-        serialiser.put(DEVICE_NAME_TAG, testdevice);
-        serialiser.put(PROPERTY_NAME_TAG, testprop);
+        serialiser.put(DEVICE_NAME_TAG, device);
+        serialiser.put(PROPERTY_NAME_TAG, property);
         serialiser.put(UPDATE_TYPE_TAG, UT_NORMAL);
         serialiser.put(SESSION_ID_TAG,"asdf"); // todo session id
         // StartMarker marks start of Data Object
@@ -331,7 +365,7 @@ public class CmwLightClient {
         final CmwLightSerialiser serialiser = new CmwLightSerialiser(new FastByteBuffer(1024));
         serialiser.putHeaderInfo();
         serialiser.put(REQ_TYPE_TAG, RT_GET); // GET
-        serialiser.put(ID_TAG, 1l);
+        serialiser.put(ID_TAG, 1L);
         serialiser.put(DEVICE_NAME_TAG, devNmae);
         serialiser.put(PROPERTY_NAME_TAG, prop);
         serialiser.put(UPDATE_TYPE_TAG, UT_NORMAL);
@@ -352,43 +386,44 @@ public class CmwLightClient {
     }
 
     public abstract static class Reply {
-        public ZFrame header; // todo: replace by parsed header contents
-        // description.printFieldStructure(); // 0=ID,1=DEVICE_NAME,2=REQ_TYPE,3=OPTIONS(a=NOTIFICATION_ID),7=UPDATE_TYPE,d=SESSION_ID,f=PROPERTY_NAME
     }
 
-    public static class ExceptionReply extends Reply {
-        public ZFrame exceptionBody; // todo: replace by parsed header contents
-    }
-
-    public static class DataReply extends Reply {
-        public ZFrame dataBody; // todo: replace by deserialized contents
-        public ZFrame dataContext; // todo: replace by parsed header contents
-        // description.printFieldStructure(); // 4=CYCLE_NAME,5=ACQ_STAMP,6=CYCLE_STAMP,x=DATA(acqStamp, cycleName,cycleStamp,type,version))
+    public static class SubscriptionExceptionReply extends Reply {
+        public long contextAcqStamp;
+        public long contextCycleStamp;
+        public String selector;
+        public String message;
+        public byte type;
     }
 
     public static class HeaderReply extends Reply {
     }
 
-    public static class RdaLightException extends Exception {
-        public RdaLightException(final String msg) {
-            super(msg);
-        }
+    public static class GetException extends Reply {
+
     }
 
-    public class SubscriptionUpdate extends Reply {
+    public static class GetReply extends Reply {
+    }
+
+    public static class SubscriptionUpdate extends Reply {
+        public String cycleName;
+        public String cycleName2;
+        public long cycleStamp;
+        public long cycleStamp2;
+        public long acqStamp;
+        public long acqStamp2;
+        public int type;
+        public int version;
         public long id;
         public byte updateType;
         public long notificationId;
-        public ZFrame contextData;
         public ZFrame bodyData;
+    }
 
-        public SubscriptionUpdate(final long id, final byte updateType, final long notificationId, final ZFrame botdyData, final ZFrame contextData) {
-            super();
-            this.id = id;
-            this.updateType = updateType;
-            this.notificationId = notificationId;
-            this.bodyData = botdyData;
-            this.contextData = contextData;
+    public static class RdaLightException extends Exception {
+        public RdaLightException(final String msg) {
+            super(msg);
         }
     }
 }

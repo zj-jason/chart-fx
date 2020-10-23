@@ -10,11 +10,9 @@ import de.gsi.microservice.cmwlight.DirectoryLightClient;
 import de.gsi.serializer.IoClassSerialiser;
 import de.gsi.serializer.spi.CmwLightSerialiser;
 import de.gsi.serializer.spi.FastByteBuffer;
-import de.gsi.serializer.spi.WireDataFieldDescription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -74,12 +72,12 @@ public class AccAggregator {
          while (!Thread.interrupted()) {
             try {
                final CmwLightClient.Reply data = client.receiveData();
-               if (data instanceof CmwLightClient.DataReply) {
+               if (data instanceof CmwLightClient.SubscriptionUpdate) {
                   inputBuffer.publishEvent((ev, seq, last) -> {
                      final CmwUpdate<T> update = new CmwUpdate<T>();
-                     update.content = deserialiseProperty(classSerialiser, ((CmwLightClient.DataReply) data).dataBody.getData(), clazz);
-                     update.selector = getSelector(classSerialiser, ((CmwLightClient.DataReply) data).dataContext.getData());
-                     update.header = getHeader(classSerialiser, data.header.getData());
+                     update.content = deserialiseProperty(classSerialiser, ((CmwLightClient.SubscriptionUpdate) data).bodyData.getData(), clazz);
+                     update.selector = ((CmwLightClient.SubscriptionUpdate) data).cycleName;
+                     update.header = Long.toString(((CmwLightClient.SubscriptionUpdate) data).id);
                      ev.data = update;
                   });
                } else {
@@ -90,19 +88,6 @@ public class AccAggregator {
             }
          }
       }, "cmwSubscription" + device).start();
-   }
-
-   private String getHeader(final IoClassSerialiser classSerialiser, final byte[] data) {
-      classSerialiser.setDataBuffer(FastByteBuffer.wrap(data));
-      System.out.println(new String(classSerialiser.getDataBuffer().elements()));
-      final WireDataFieldDescription description = classSerialiser.parseWireFormat();
-      return description.toString();
-   }
-
-   private String getSelector(final IoClassSerialiser classSerialiser, final byte[] dataContext) {
-      classSerialiser.setDataBuffer(FastByteBuffer.wrap(dataContext));
-      final WireDataFieldDescription description = classSerialiser.parseWireFormat();
-      return description.toString();
    }
 
    private <T> T deserialiseProperty(final IoClassSerialiser classSerialiser, final byte[] data, final Class<T> clazz) {
