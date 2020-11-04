@@ -3,6 +3,7 @@ package de.gsi.microservice.concepts.aggregate.cmwSource;
 import de.gsi.dataset.utils.RingBuffer;
 import de.gsi.microservice.concepts.aggregate.RingBufferEvent;
 import de.gsi.microservice.concepts.cmwlight.CmwLightClient;
+import de.gsi.microservice.concepts.cmwlight.CmwLightProtocol;
 import de.gsi.microservice.concepts.cmwlight.DirectoryLightClient;
 
 import java.util.Collections;
@@ -52,12 +53,12 @@ public class CmwEventSource implements Runnable {
                 // poll messages
                 while (!Thread.interrupted()) { // todo add timeout so one connection cannot block the others? or switch nesting?
                     try {
-                        final CmwLightClient.Reply reply = server.cmwClient.receiveData();
+                        final CmwLightProtocol.Reply reply = server.cmwClient.receiveData();
                         // connection established, update status
                         // subscription established, update status
                         // data received -> put into buffer
                         // exception received -> put into buffer
-                    } catch (CmwLightClient.RdaLightException e) {
+                    } catch (CmwLightProtocol.RdaLightException e) {
                         continue;
                     }
                 }
@@ -67,22 +68,14 @@ public class CmwEventSource implements Runnable {
 
     private void checkConnectionStatus(final CmwServer server) {
         if (server.conStatus.equals(ConnectionStatus.OFFLINE)) {
-            try {
-                server.cmwClient.connect();
-                server.conStatus = ConnectionStatus.CONNECTING;
-            } catch (CmwLightClient.RdaLightException e) {
-                // log failure
-            }
+            server.cmwClient.connect();
+            server.conStatus = ConnectionStatus.CONNECTING;
         } else {
             for (CmwDevice dev : server.devices.values()) {
                 for (CmwSubscription sub : dev.subscriptions.values()) {
                     if (sub.conStatus.equals(ConnectionStatus.OFFLINE)) {
-                        try {
-                            server.cmwClient.subscribe(sub.device, sub.property, sub.selector, sub.filters);
-                            sub.conStatus = ConnectionStatus.CONNECTING;
-                        } catch (CmwLightClient.RdaLightException e) {
-                            continue;
-                        }
+                        server.cmwClient.subscribe(sub.device, sub.property, sub.selector, sub.filters);
+                        sub.conStatus = ConnectionStatus.CONNECTING;
                     }
                 }
             }
