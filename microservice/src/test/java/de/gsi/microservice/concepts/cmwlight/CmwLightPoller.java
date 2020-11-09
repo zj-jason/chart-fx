@@ -58,7 +58,7 @@ public class CmwLightPoller implements Runnable {
         while (!Thread.interrupted()) {
             try {
                 final CmwLightProtocol.Reply reply = poll(timeout);
-                if (reply instanceof CmwLightProtocol.SubscriptionUpdate) {
+                if (reply != null && reply.requestType == CmwLightProtocol.RequestType.NOTIFICATION_DATA) {
                     // subscriptionCallback.call(reply);
                     System.out.println(reply);
                 }

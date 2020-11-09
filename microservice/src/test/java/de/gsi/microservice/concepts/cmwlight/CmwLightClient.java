@@ -27,7 +27,7 @@ public class CmwLightClient {
     private final String address;
     private String sessionId = "asdf"; // todo
     private long connectionId;
-    private Map<Long, Subscription> subscriptions = Collections.synchronizedMap(new HashMap<>()); // all subscriptions added to the server
+    Map<Long, Subscription> subscriptions = Collections.synchronizedMap(new HashMap<>()); // all subscriptions added to the server
     // private final List<QueuedRequests> queuedRequests = new LimitedArrayList(); // all requests which are waiting for a reply/timeout from the server
     private long lastHbReceived = -1;
     private long lastHbSent = -1;
@@ -110,7 +110,7 @@ public class CmwLightClient {
         final ZMsg data = ZMsg.recvMsg(controlChannel, ZMQ.DONTWAIT);
         if (data == null) return null;
         final CmwLightProtocol.Reply reply = CmwLightProtocol.parseMsg(data);
-        if (connectionState.get().equals(ConnectionState.CONNECTING) && reply instanceof CmwLightProtocol.ConnectAckReply) {
+        if (connectionState.get().equals(ConnectionState.CONNECTING) && reply.messageType == CmwLightProtocol.MessageType.SERVER_CONNECT_ACK) {
             connectionState.set(ConnectionState.CONNECTED);
             backOff = 20; // reset back-off time
             return reply;
@@ -118,16 +118,16 @@ public class CmwLightClient {
         if (connectionState.get() != ConnectionState.CONNECTED) {
             LOGGER.atWarn().addArgument(reply).log("received data before connection established: {}");
         }
-        if (reply instanceof CmwLightProtocol.ExceptionReply) {
+        if (reply.requestType == CmwLightProtocol.RequestType.SUBSCRIBE_EXCEPTION) {
             // restart subscription ((CmwLightProtocol.SubscriptionExceptionReply) reply).id
         }
-        if (reply instanceof CmwLightProtocol.SubscribeAckReply) {
+        if (reply.requestType == CmwLightProtocol.RequestType.SUBSCRIBE) {
             final long id = subscriptions.keySet().stream().findAny().get();
             final Subscription sub = subscriptions.get(id);
             sub.subscriptionState = SubscriptionState.SUBSCRIBED;
-            sub.setBackOff(20);
+            sub.backOff = 20;
         }
-        if (reply instanceof CmwLightProtocol.ServerHeartbeatReply) {
+        if (reply.messageType == CmwLightProtocol.MessageType.SERVER_HB) {
             lastHbReceived = currentTime;
         }
         return reply;
@@ -248,18 +248,6 @@ public class CmwLightClient {
             this.device = device;
             this.selector = selector;
             this.filters = filters;
-        }
-
-        public void setBackOff(final int backOff) {
-            this.backOff = backOff;
-        }
-
-        public int getBackOff() {
-            return backOff;
-        }
-
-        public SubscriptionState getSubscriptionState() {
-            return subscriptionState;
         }
 
         @Override
