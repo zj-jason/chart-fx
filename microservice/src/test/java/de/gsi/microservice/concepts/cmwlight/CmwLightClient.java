@@ -82,17 +82,17 @@ public class CmwLightClient {
         return hostname + '/' + processId + '/' + connectionId + '/' + channelId;
     }
 
-    public void connect() {
+    public void connect() throws CmwLightProtocol.RdaLightException {
         if (connectionState.getAndSet(ConnectionState.CONNECTING) != ConnectionState.DISCONNECTED) {
             return;
         }
         controlChannel.connect(address);
-        CmwLightProtocol.connectReq().send(controlChannel);
+        CmwLightProtocol.serialiseMsg(CmwLightMessage.connect("1.0.0")).send(controlChannel);
         connectionState.set(ConnectionState.CONNECTING);
         lastHbReceived = System.currentTimeMillis();
     }
 
-    private void resetConnection() {
+    private void resetConnection() throws CmwLightProtocol.RdaLightException {
         disconnect();
         connect();
     }

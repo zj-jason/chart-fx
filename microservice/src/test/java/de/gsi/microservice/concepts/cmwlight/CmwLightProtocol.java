@@ -7,7 +7,6 @@ import org.zeromq.*;
 
 import java.nio.charset.Charset;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,7 +20,7 @@ public class CmwLightProtocol {
     private static final IoBuffer outBuffer = new FastByteBuffer(MAX_MSG_SIZE);
     private static final CmwLightSerialiser serialiser = new CmwLightSerialiser(outBuffer);
     private static final IoClassSerialiser classSerialiser = new IoClassSerialiser(new FastByteBuffer(0));
-    private static final String VERSION = "1.0.0";
+    private static final String VERSION = "1.0.0"; // Protocol version used if msg.version is null or empty
 
     /**
      * The message specified by the byte contained in the first frame of a message defines what type of message is present
@@ -38,6 +37,14 @@ public class CmwLightProtocol {
 
         public byte value() {
             return value;
+        }
+
+        public static MessageType of(int value) {
+            if (value < 0x4) {
+                return values()[value - 1];
+            }else {
+                return values()[value - 0x20 + CLIENT_CONNECT.ordinal()];
+            }
         }
     }
 
@@ -124,11 +131,11 @@ public class CmwLightProtocol {
     }
 
     public static ZMsg subsReq(final String sessionId, final long id, final String device, final String property, final String selector, final Map<String, Object> filters) throws RdaLightException {
-        return serialiseMsg(CmwLightMessage.subscriptionRequest(sessionId, id, device, property, new CmwLightMessage.RequestContext(selector, filters, null), UpdateType.NORMAL));
+        return serialiseMsg(CmwLightMessage.subscribeRequest(sessionId, id, device, property, Map.of("b", 1337L), new CmwLightMessage.RequestContext(selector, filters, null), UpdateType.NORMAL));
     }
 
     public static ZMsg unsubReq(final String sessionId, final long id, final String device, final String property, final String selector, final Map<String, Object> filters) throws RdaLightException {
-        return serialiseMsg(CmwLightMessage.unsubscriptionRequest(sessionId, id, device, property, new CmwLightMessage.RequestContext(selector, filters, null), UpdateType.NORMAL));
+        return serialiseMsg(CmwLightMessage.unsubscribeRequest(sessionId, id, device, property, null, new CmwLightMessage.RequestContext(selector, filters, null), UpdateType.NORMAL));
     }
 
     public static ZMsg getReq(final String sessionId, final long id, final String devName, final String prop, final String selector) throws RdaLightException {
@@ -153,13 +160,23 @@ public class CmwLightProtocol {
             reply.version = versionData.getString(Charset.defaultCharset());
             return reply;
         }
+        if (firstFrame != null && Arrays.equals(firstFrame.getData(), new byte[] { MessageType.CLIENT_CONNECT.value()})) {
+            final CmwLightMessage reply = new CmwLightMessage(MessageType.CLIENT_CONNECT);
+            final ZFrame versionData = data.pollFirst();
+            AssertUtils.notNull("version data in connection acknowledgement frame", versionData);
+            reply.version = versionData.getString(Charset.defaultCharset());
+            return reply;
+        }
         if (firstFrame != null && Arrays.equals(firstFrame.getData(), new byte[] { MessageType.SERVER_HB.value()})) {
             return CmwLightMessage.SERVER_HB;
+        }
+        if (firstFrame != null && Arrays.equals(firstFrame.getData(), new byte[] { MessageType.CLIENT_HB.value()})) {
+            return CmwLightMessage.CLIENT_HB;
         }
         byte[] descriptor = checkDescriptor(data.pollLast(), firstFrame);
         final ZFrame headerMsg = data.poll();
         AssertUtils.notNull("message header", headerMsg);
-        CmwLightMessage reply = getReplyFromHeader(headerMsg);
+        CmwLightMessage reply = getReplyFromHeader(firstFrame, headerMsg);
         switch (reply.requestType) {
             case REPLY:
                 assertDescriptor(descriptor, FrameType.HEADER, FrameType.BODY, FrameType.BODY_DATA_CONTEXT);
@@ -168,7 +185,7 @@ public class CmwLightProtocol {
                 return reply;
             case NOTIFICATION_DATA: // notification update
                 assertDescriptor(descriptor, FrameType.HEADER, FrameType.BODY, FrameType.BODY_DATA_CONTEXT);
-                reply.notificationId = (long) reply.options.get(FieldName.NOTIFICATION_ID_TAG.name());
+                reply.notificationId = (long) reply.options.get(FieldName.NOTIFICATION_ID_TAG.value());
                 reply.bodyData = data.pollFirst();
                 reply.dataContext = parseContextData(data.pollFirst());
                 return reply;
@@ -178,21 +195,26 @@ public class CmwLightProtocol {
                 assertDescriptor(descriptor, FrameType.HEADER, FrameType.BODY_EXCEPTION);
                 reply.exceptionMessage = parseExceptionMessage(data.pollFirst());
                 return reply;
+            case GET:
             case SUBSCRIBE:  // descriptor: [0] options: SOURCE_ID_TAG // seems to be sent after subscription is accepted
-                assertDescriptor(descriptor, FrameType.HEADER);
-                reply.souceId = (long) reply.options.get(FieldName.SOURCE_ID_TAG.name());
+            case UNSUBSCRIBE:
+                assertDescriptor(descriptor, FrameType.HEADER, FrameType.BODY_REQUEST_CONTEXT);
+                if (reply.requestType == RequestType.SUBSCRIBE) reply.sourceId = (long) reply.options.get(FieldName.SOURCE_ID_TAG.value());
+                reply.requestContext = parseRequestContext(data.pollFirst());
                 return reply;
             case SESSION_CONFIRM: // descriptor: [0] options: SESSION_BODY_TAG
                 assertDescriptor(descriptor, FrameType.HEADER);
-                reply.sessionBody = (Map<String, Object>) reply.options.get(FieldName.SESSION_BODY_TAG.name());
+                reply.sessionBody = (Map<String, Object>) reply.options.get(FieldName.SESSION_BODY_TAG.value());
                 return reply;
             case EVENT:
+            case CONNECT:
                 assertDescriptor(descriptor, FrameType.HEADER);
                 return reply;
-            case CONNECT:
             case SET:
-            case GET:
-            case UNSUBSCRIBE:
+                assertDescriptor(descriptor, FrameType.HEADER, FrameType.BODY, FrameType.BODY_REQUEST_CONTEXT);
+                reply.bodyData = data.pollFirst();
+                reply.requestContext = parseRequestContext(data.pollFirst());
+                return reply;
             default:
                  throw new RdaLightException("received unknown or non-client request type: " + reply.requestType);
         }
@@ -203,12 +225,13 @@ public class CmwLightProtocol {
     }
 
     public static ZMsg serialiseMsg(final CmwLightMessage msg) throws RdaLightException {
+        System.out.println("sending: " + msg);
         final ZMsg result = new ZMsg();
         switch (msg.messageType) {
             case SERVER_CONNECT_ACK:
             case CLIENT_CONNECT:
                 result.add(new ZFrame(new byte[] {msg.messageType.value()}));
-                result.add(new ZFrame(VERSION));
+                result.add(new ZFrame(msg.version == null || msg.version.isEmpty() ? VERSION : msg.version));
                 return result;
             case CLIENT_HB:
             case SERVER_HB:
@@ -242,6 +265,7 @@ public class CmwLightProtocol {
                     case NOTIFICATION_DATA:
                         AssertUtils.notNull("bodyData", msg.bodyData);
                         result.add(msg.bodyData);
+                        result.add(serialiseDataContext(msg.dataContext));
                         addDescriptor(result, FrameType.HEADER, FrameType.BODY, FrameType.BODY_DATA_CONTEXT);
                         break;
                     case NOTIFICATION_EXC:
@@ -270,25 +294,25 @@ public class CmwLightProtocol {
     }
 
     private static void addDescriptor(final ZMsg result, final FrameType ... frametypes) {
-        for (FrameType ft : frametypes) {
-            result.add(new ZFrame(new byte[] {ft.value()}));
+        byte[] descriptor = new byte[frametypes.length];
+        for (int i = 0; i < descriptor.length; i++) {
+            descriptor[i] = frametypes[i].value();
         }
+        result.add(new ZFrame(descriptor));
     }
 
     private static ZFrame serialiseHeader(final CmwLightMessage msg) throws RdaLightException {
         outBuffer.reset();
         serialiser.setBuffer(outBuffer);
         serialiser.putHeaderInfo();
-        serialiser.put(FieldName.REQ_TYPE_TAG.name(), msg.requestType.value());
-        serialiser.put(FieldName.ID_TAG.name(), msg.id);
-        serialiser.put(FieldName.DEVICE_NAME_TAG.name(), msg.deviceName);
-        serialiser.put(FieldName.PROPERTY_NAME_TAG.name(), msg.propertyName);
-        serialiser.put(FieldName.UPDATE_TYPE_TAG.name(), msg.updateType.value());
-        serialiser.put(FieldName.SESSION_ID_TAG.name(), msg.sessionId);
+        serialiser.put(FieldName.REQ_TYPE_TAG.value(), msg.requestType.value());
+        serialiser.put(FieldName.ID_TAG.value(), msg.id);
+        serialiser.put(FieldName.DEVICE_NAME_TAG.value(), msg.deviceName);
+        serialiser.put(FieldName.PROPERTY_NAME_TAG.value(), msg.propertyName);
+        if (msg.updateType != null) serialiser.put(FieldName.UPDATE_TYPE_TAG.value(), msg.updateType.value());
+        serialiser.put(FieldName.SESSION_ID_TAG.value(), msg.sessionId);
         // StartMarker marks start of Data Object
-        if (msg.options == null) msg.options = new HashMap<>();
-        if (msg.options.containsKey(FieldName.SESSION_BODY_TAG.name())) msg.options.put(FieldName.SESSION_BODY_TAG.name(), Collections.<String, Object>emptyMap());
-        putMap(serialiser, FieldName.OPTIONS_TAG.name(), msg.options);
+        putMap(serialiser, FieldName.OPTIONS_TAG.value(), msg.options);
         outBuffer.flip();
         return new ZFrame(Arrays.copyOfRange(outBuffer.elements(), 0, outBuffer.limit()));
     }
@@ -296,9 +320,20 @@ public class CmwLightProtocol {
     private static ZFrame serialiseRequestContext(final CmwLightMessage.RequestContext requestContext) throws RdaLightException {
         outBuffer.reset();
         serialiser.putHeaderInfo();
-        serialiser.put(FieldName.SELECTOR_TAG.name(), requestContext.selector);
-        putMap(serialiser, FieldName.FILTERS_TAG.name(), requestContext.filters);
-        putMap(serialiser, FieldName.DATA_TAG.name(), requestContext.data);
+        serialiser.put(FieldName.SELECTOR_TAG.value(), requestContext.selector);
+        putMap(serialiser, FieldName.FILTERS_TAG.value(), requestContext.filters);
+        putMap(serialiser, FieldName.DATA_TAG.value(), requestContext.data);
+        outBuffer.flip();
+        return new ZFrame(Arrays.copyOfRange(outBuffer.elements(), 0, outBuffer.limit()));
+    }
+
+    private static ZFrame serialiseDataContext(final CmwLightMessage.DataContext dataContext) throws RdaLightException {
+        outBuffer.reset();
+        serialiser.putHeaderInfo();
+        serialiser.put(FieldName.CYCLE_NAME_TAG.value(), dataContext.cycleName);
+        serialiser.put(FieldName.CYCLE_STAMP_TAG.value(), dataContext.cycleStamp);
+        serialiser.put(FieldName.ACQ_STAMP_TAG.value(), dataContext.acqStamp);
+        putMap(serialiser, FieldName.DATA_TAG.value(), dataContext.data);
         outBuffer.flip();
         return new ZFrame(Arrays.copyOfRange(outBuffer.elements(), 0, outBuffer.limit()));
     }
@@ -328,15 +363,15 @@ public class CmwLightProtocol {
         }
     }
 
-    private static CmwLightMessage getReplyFromHeader(final ZFrame header) throws RdaLightException {
-        CmwLightMessage reply = new CmwLightMessage();
+    private static CmwLightMessage getReplyFromHeader(final ZFrame firstFrame, final ZFrame header) throws RdaLightException {
+        CmwLightMessage reply = new CmwLightMessage(MessageType.of(firstFrame.getData()[0]));
         classSerialiser.setDataBuffer(FastByteBuffer.wrap(header.getData()));
         final FieldDescription headerMap;
         try {
             headerMap = classSerialiser.parseWireFormat().getChildren().get(0);
             for (FieldDescription field : headerMap.getChildren()) {
                 if (field.getFieldName().equals(FieldName.REQ_TYPE_TAG.value()) && field.getType() == byte.class) {
-                    reply.requestType = RequestType.of((int) ((WireDataFieldDescription) field).data());
+                    reply.requestType = RequestType.of((byte) (((WireDataFieldDescription) field).data()));
                 } else if (field.getFieldName().equals(FieldName.ID_TAG.value()) && field.getType() == long.class) {
                     reply.id = (long) ((WireDataFieldDescription) field).data();
                 } else if (field.getFieldName().equals(FieldName.DEVICE_NAME_TAG.value()) && field.getType() == String.class) {
@@ -349,7 +384,7 @@ public class CmwLightProtocol {
                         reply.options.put(dataField.getFieldName(), ((WireDataFieldDescription) dataField).data());
                     }
                 } else if (field.getFieldName().equals(FieldName.UPDATE_TYPE_TAG.value()) && field.getType() == byte.class) {
-                    reply.updateType = UpdateType.of((int) ((WireDataFieldDescription) field).data());
+                    reply.updateType = UpdateType.of((byte) ((WireDataFieldDescription) field).data());
                 } else if (field.getFieldName().equals(FieldName.SESSION_ID_TAG.value()) && field.getType() == String.class) {
                     reply.sessionId = (String) ((WireDataFieldDescription) field).data();
                 } else if (field.getFieldName().equals(FieldName.PROPERTY_NAME_TAG.value()) && field.getType() == String.class) {
@@ -390,6 +425,40 @@ public class CmwLightProtocol {
         return exceptionMessage;
     }
 
+    private static CmwLightMessage.RequestContext parseRequestContext(final ZFrame contextData) throws RdaLightException {
+        AssertUtils.notNull("contextData", contextData);
+        CmwLightMessage.RequestContext requestContext = new CmwLightMessage.RequestContext();
+        classSerialiser.setDataBuffer(FastByteBuffer.wrap(contextData.getData()));
+        final FieldDescription contextMap;
+        try {
+            contextMap = classSerialiser.parseWireFormat().getChildren().get(0);
+            for (FieldDescription field : contextMap.getChildren()) {
+                if (field.getFieldName().equals(FieldName.SELECTOR_TAG.value()) && field.getType() == String.class) {
+                    requestContext.selector = (String) ((WireDataFieldDescription) field).data();
+                } else if (field.getFieldName().equals(FieldName.FILTERS_TAG.value())) {
+                    for (FieldDescription dataField : field.getChildren()) {
+                        if (requestContext.filters == null) {
+                            requestContext.filters = new HashMap<>();
+                        }
+                        requestContext.filters.put(dataField.getFieldName(), ((WireDataFieldDescription) dataField).data());
+                    }
+                } else if (field.getFieldName().equals(FieldName.DATA_TAG.value())) {
+                    for (FieldDescription dataField : field.getChildren()) {
+                        if (requestContext.data == null) {
+                            requestContext.data = new HashMap<>();
+                        }
+                        requestContext.data.put(dataField.getFieldName(), ((WireDataFieldDescription) dataField).data());
+                    }
+                } else {
+                    throw new UnsupportedOperationException("Unknown field: " + field.getFieldName());
+                }
+            }
+        } catch (IllegalStateException e) {
+            throw new RdaLightException("unparsable context data: " + Arrays.toString(contextData.getData()) + "(" + new String(contextData.getData()) + ")");
+        }
+        return requestContext;
+    }
+
     private static CmwLightMessage.DataContext parseContextData(final ZFrame contextData) throws RdaLightException {
         AssertUtils.notNull("contextData", contextData);
         CmwLightMessage.DataContext dataContext = new CmwLightMessage.DataContext();
@@ -398,13 +467,13 @@ public class CmwLightProtocol {
         try {
             contextMap = classSerialiser.parseWireFormat().getChildren().get(0);
             for (FieldDescription field : contextMap.getChildren()) {
-                if (field.getFieldName().equals(FieldName.CYCLE_NAME_TAG.name()) && field.getType() == String.class) {
+                if (field.getFieldName().equals(FieldName.CYCLE_NAME_TAG.value()) && field.getType() == String.class) {
                     dataContext.cycleName = (String) ((WireDataFieldDescription) field).data();
-                } else if (field.getFieldName().equals(FieldName.ACQ_STAMP_TAG.name()) && field.getType() == long.class) {
+                } else if (field.getFieldName().equals(FieldName.ACQ_STAMP_TAG.value()) && field.getType() == long.class) {
                     dataContext.acqStamp = (long) ((WireDataFieldDescription) field).data();
-                } else if (field.getFieldName().equals(FieldName.CYCLE_STAMP_TAG.name()) && field.getType() == long.class) {
+                } else if (field.getFieldName().equals(FieldName.CYCLE_STAMP_TAG.value()) && field.getType() == long.class) {
                     dataContext.cycleStamp = (long) ((WireDataFieldDescription) field).data();
-                } else if (field.getFieldName().equals(FieldName.DATA_TAG.name())) {
+                } else if (field.getFieldName().equals(FieldName.DATA_TAG.value())) {
                     for (FieldDescription dataField : field.getChildren()) {
                         if (dataContext.data == null) {
                             dataContext.data = new HashMap<>();
@@ -433,7 +502,8 @@ public class CmwLightProtocol {
     }
 
     private static byte[] checkDescriptor(final ZFrame descriptorMsg, final ZFrame firstFrame) throws RdaLightException {
-        if (firstFrame == null || !Arrays.equals(firstFrame.getData(), new byte[] { MessageType.SERVER_REP.value() })) {
+        if (firstFrame == null || !(Arrays.equals(firstFrame.getData(), new byte[] { MessageType.SERVER_REP.value() })
+                || Arrays.equals(firstFrame.getData(), new byte[] { MessageType.CLIENT_REQ.value() }))) {
             throw new RdaLightException("Expecting only messages of type Heartbeat or Reply but got: " + firstFrame);
         }
         if (descriptorMsg == null) {
@@ -444,13 +514,6 @@ public class CmwLightProtocol {
             throw new RdaLightException("First message of SERVER_REP has to be of type MT_HEADER but is: " + descriptor[0]);
         }
         return descriptor;
-    }
-
-    public static ZMsg connectReq() {
-        final ZMsg result = new ZMsg();
-        result.add(new byte[]{MessageType.CLIENT_CONNECT.value()});
-        result.add("1.0.0".getBytes());
-        return result;
     }
 
     public static class RdaLightException extends Exception {
