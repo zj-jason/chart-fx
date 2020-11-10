@@ -29,14 +29,14 @@ public class CmwLightPoller implements Runnable {
      * @return an object with a reply or null if the poll timed out
      * @throws CmwLightProtocol.RdaLightException
      */
-    public CmwLightProtocol.Reply poll(long tout) throws CmwLightProtocol.RdaLightException {
+    public CmwLightMessage poll(long tout) throws CmwLightProtocol.RdaLightException {
         // wait for data to become available
         if (poller.poll(tout) <= 0) {
             return null;
         }
         // get data from clients
         for (CmwLightClient client: clients.values()) {
-            final CmwLightProtocol.Reply reply = client.receiveData();
+            final CmwLightMessage reply = client.receiveData();
             if (reply != null) {
                 return reply; // this always asks the first client first... we should do round robin
             }
@@ -57,7 +57,7 @@ public class CmwLightPoller implements Runnable {
     public void run() {
         while (!Thread.interrupted()) {
             try {
-                final CmwLightProtocol.Reply reply = poll(timeout);
+                final CmwLightMessage reply = poll(timeout);
                 if (reply != null && reply.requestType == CmwLightProtocol.RequestType.NOTIFICATION_DATA) {
                     // subscriptionCallback.call(reply);
                     System.out.println(reply);

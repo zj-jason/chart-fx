@@ -103,13 +103,13 @@ public class CmwLightClient {
         // disconnect/reset subscriptions
     }
 
-    public CmwLightProtocol.Reply receiveData() throws CmwLightProtocol.RdaLightException {
+    public CmwLightMessage receiveData() throws CmwLightProtocol.RdaLightException {
         final long currentTime = System.currentTimeMillis();
         if (housekeeping(currentTime)) return null; // heartbeats and subscription timeouts/connects
         // receive data
         final ZMsg data = ZMsg.recvMsg(controlChannel, ZMQ.DONTWAIT);
         if (data == null) return null;
-        final CmwLightProtocol.Reply reply = CmwLightProtocol.parseMsg(data);
+        final CmwLightMessage reply = CmwLightProtocol.parseMsg(data);
         if (connectionState.get().equals(ConnectionState.CONNECTING) && reply.messageType == CmwLightProtocol.MessageType.SERVER_CONNECT_ACK) {
             connectionState.set(ConnectionState.CONNECTED);
             backOff = 20; // reset back-off time
@@ -200,7 +200,7 @@ public class CmwLightClient {
     }
 
 
-    public void sendHeartBeat() {
+    public void sendHeartBeat() throws CmwLightProtocol.RdaLightException {
         CmwLightProtocol.hbReq().send(controlChannel);
     }
 
@@ -221,7 +221,7 @@ public class CmwLightClient {
         sub.subscriptionState = SubscriptionState.UNSUBSCRIBED;
     }
 
-    public void sendGet(final String devName, final String prop, final String selector) {
+    public void sendGet(final String devName, final String prop, final String selector) throws CmwLightProtocol.RdaLightException {
         CmwLightProtocol.getReq(sessionId, connectionId, devName, prop, selector).send(controlChannel);
     }
 
@@ -267,14 +267,5 @@ public class CmwLightClient {
 
     public enum SubscriptionState {
         UNSUBSCRIBED, SUBSCRIBING, SUBSCRIBED
-    }
-
-    public static class RdaLightException extends Exception {
-        public RdaLightException(final String msg) {
-            super(msg);
-        }
-        public RdaLightException(final String msg, final Throwable e) {
-            super(msg, e);
-        }
     }
 }

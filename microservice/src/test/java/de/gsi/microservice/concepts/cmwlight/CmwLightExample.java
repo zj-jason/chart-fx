@@ -46,7 +46,7 @@ public class CmwLightExample { // NOPMD is not a utility class but a sample
         int i = 0;
         while (i < 15) {
             poller.poll();
-            final CmwLightProtocol.Reply result = client.receiveData();
+            final CmwLightMessage result = client.receiveData();
             if (result != null && result.requestType == CmwLightProtocol.RequestType.NOTIFICATION_DATA) {
                 final byte[] bytes = result.bodyData.getData();
                 final IoClassSerialiser classSerialiser = new IoClassSerialiser(FastByteBuffer.wrap(bytes), CmwLightSerialiser.class);
